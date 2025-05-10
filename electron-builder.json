@@ -1,0 +1,16 @@
+{
+    "appId": "com.fruitypie.freebie-grabber",
+    "files": ["dist-react", "src/electron"],
+    "extraResources":["dist/preload.cjs"],
+    "icon": "./desktopIcon.jpg",
+    "mac": {
+        "target": "dmg"
+    },
+    "linux": {
+        "target": "AppImage",
+        "category": "Utility"
+    },
+    "win": {
+        "target": ["portable", "msi"]
+    }
+}
