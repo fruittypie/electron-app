@@ -1,7 +1,26 @@
 // src/renderer/components/Menu.jsx
 import React from 'react';
+import React, { useEffect, useState } from 'react';
+
 
 export default function Menu({ onStart, onSettings }) {
+  const [hasSettings, setHasSettings] = useState(false);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('scraperSettings');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed.refreshRate && parsed.notifications !== undefined) {
+          setHasSettings(true);
+        }
+      } catch {
+        // Invalid settings
+        setHasSettings(false);
+      }
+    }
+  }, []);
+
   return (
     <div className="h-screen flex flex-col items-center justify-center space-y-6 bg-gray-50 dark:bg-gray-900">
       <button
