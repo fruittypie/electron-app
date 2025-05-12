@@ -1,13 +1,5 @@
-<<<<<<< HEAD
 import React, { useEffect, useState } from 'react';
 
-=======
-// src/renderer/components/Menu.jsx
-import React from 'react';
-import React, { useEffect, useState } from 'react';
-
-
->>>>>>> 5fded0742bf6b188c54d9aba11c3520432a189da
 export default function Menu({ onStart, onSettings }) {
   const [hasSettings, setHasSettings] = useState(false);
 
@@ -16,7 +8,6 @@ export default function Menu({ onStart, onSettings }) {
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
-<<<<<<< HEAD
         if (
           parsed.username && 
           parsed.password && 
@@ -27,10 +18,6 @@ export default function Menu({ onStart, onSettings }) {
           setHasSettings(true);
         } else {
           setHasSettings(false);
-=======
-        if (parsed.refreshRate && parsed.notifications !== undefined) {
-          setHasSettings(true);
->>>>>>> 5fded0742bf6b188c54d9aba11c3520432a189da
         }
       } catch {
         // Invalid settings
