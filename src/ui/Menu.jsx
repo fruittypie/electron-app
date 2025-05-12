@@ -46,6 +46,12 @@ export default function Menu({ onStart, onSettings }) {
       >
         Settings
       </button>
+
+      {!hasSettings && (
+        <p className="text-red-500 text-sm text-center">
+          Please configure settings before starting the scraper
+        </p>
+      )}
     </div>
   );
 }
