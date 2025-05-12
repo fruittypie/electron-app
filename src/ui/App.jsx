@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import AuthPage from './AuthPage.jsx';
 import Menu from './Menu.jsx';
-import Dashboard from './Dashboard.jsx';
+import Settings from './Settings.jsx';
 
 import './App.css';
 
@@ -41,5 +41,5 @@ export default function App() {
     );
   }
 
-  return <Dashboard onBack={() => setView('menu')} />;
+  return <Settings onBack={() => setView('menu')} />;
 }

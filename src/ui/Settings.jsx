@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export default function Dashboard() {
+export default function Settings() {
   // Scraper mode toggle
   const [headless, setHeadless] = useState(true);
 
