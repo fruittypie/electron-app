@@ -1,7 +1,4 @@
-// src/renderer/components/Menu.jsx
-import React from 'react';
 import React, { useEffect, useState } from 'react';
-
 
 export default function Menu({ onStart, onSettings }) {
   const [hasSettings, setHasSettings] = useState(false);
@@ -11,8 +8,16 @@ export default function Menu({ onStart, onSettings }) {
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
-        if (parsed.refreshRate && parsed.notifications !== undefined) {
+        if (
+          parsed.username && 
+          parsed.password && 
+          parsed.intervalSec && 
+          parsed.intervalSec > 0 &&
+          (parsed.notifyInApp || parsed.notifyDiscord)
+        ) {
           setHasSettings(true);
+        } else {
+          setHasSettings(false);
         }
       } catch {
         // Invalid settings
