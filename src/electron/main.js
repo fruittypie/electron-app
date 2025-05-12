@@ -5,6 +5,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { isDev } from './util.js';
 import { getPreloadPath } from './pathResolver.js';
+import { startScraping } from './scraper/scraper.js'; 
 import dotenv from 'dotenv';
 
 
@@ -34,7 +35,6 @@ app.on('ready', () => {
     const loaded = JSON.parse(fs.readFileSync(STORE_PATH));
     store = { ...store, ...loaded };
   } catch {}
-
   // load settings from file
   let settings = {};
   try {
@@ -135,12 +135,22 @@ app.on('ready', () => {
   
   ipcMain.handle('save-scraper-settings', (event, newSettings) => {
     try {
-      settings = { ...settings, ...newSettings }; // merge new settings into existing ones
-      saveSettings(); // save the settings to file
+      // merge new settings into existing ones
+      settings = { ...settings, ...newSettings }; 
+      saveSettings(); 
       return { success: true };
     } catch (error) {
       console.error('Failed to save settings:', error);
       return { success: false, error: error.message };
     }
   });
+
+  // Handle start-puppeteer-scraper event
+  ipcMain.handle('start-puppeteer-scraper', async (_, scraperSettings) => {
+    // assign settings to the main process
+    Object.assign(settings, scraperSettings); 
+    // start Puppeteer script with settings
+    await startScraping(settings); 
+  });
+
 });
