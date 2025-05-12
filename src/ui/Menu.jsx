@@ -4,27 +4,20 @@ export default function Menu({ onStart, onSettings }) {
   const [hasSettings, setHasSettings] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem('scraperSettings');
-    if (stored) {
+    // fetching the settings from the main process IPC
+    const loadSettings = async () => {
       try {
-        const parsed = JSON.parse(stored);
-        if (
-          parsed.username && 
-          parsed.password && 
-          parsed.intervalSec && 
-          parsed.intervalSec > 0 &&
-          (parsed.notifyInApp || parsed.notifyDiscord)
-        ) {
-          setHasSettings(true);
-        } else {
-          setHasSettings(false);
-        }
-      } catch {
-        // Invalid settings
-        setHasSettings(false);
+        const storedSettings = await window.electron.invoke('get-scraper-settings');
+        // check if necessary settings are available
+        setHasSettings(!!storedSettings.username && !!storedSettings.password);
+      } catch (error) {
+        console.error('Error loading settings:', error);
+        setHasSettings(false); // ensure we set to false in case of an error
       }
-    }
-  }, []);
+    };
+
+    loadSettings();
+  }, []); // empty dependency array to run only on mount
 
   return (
     <div className="h-screen flex flex-col items-center justify-center space-y-6 bg-gray-50 dark:bg-gray-900">
@@ -32,8 +25,8 @@ export default function Menu({ onStart, onSettings }) {
         onClick={onStart}
         disabled={!hasSettings}
         className={`w-48 py-3 font-semibold rounded-md shadow-lg transition ${
-          hasSettings 
-            ? 'bg-green-600 hover:bg-green-700 text-white' 
+          hasSettings
+            ? 'bg-green-600 hover:bg-green-700 text-white'
             : 'bg-gray-400 text-gray-200 cursor-not-allowed'
         }`}
       >

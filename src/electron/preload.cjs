@@ -8,3 +8,7 @@ contextBridge.exposeInMainWorld('authAPI', {
   notifyAuthSuccess: (token) => ipcRenderer.send('auth-success', { token }) ,
   getTokens: () => ipcRenderer.invoke('auth-getTokens')
 });
+
+contextBridge.exposeInMainWorld('electron', {
+  invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+});

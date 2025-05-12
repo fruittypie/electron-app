@@ -7,6 +7,7 @@ import { isDev } from './util.js';
 import { getPreloadPath } from './pathResolver.js';
 import dotenv from 'dotenv';
 
+
 dotenv.config();
 
 app.on('ready', () => {
@@ -23,18 +24,30 @@ app.on('ready', () => {
     mainWindow.loadFile(path.join(app.getAppPath(), '/dist-react/index.html'));
   }
 
-  // Path to store data
+  // path to store data
   const STORE_PATH = path.join(app.getPath('userData'), 'auth-store.json');
+  const SETTINGS_PATH = path.join(app.getPath('userData'), 'scraper-settings.json');
 
-  // Load store from file
+  // load store from file
   let store = { users: {}, tokens: { accessToken: null, refreshToken: null } };
   try {
     const loaded = JSON.parse(fs.readFileSync(STORE_PATH));
     store = { ...store, ...loaded };
   } catch {}
 
+  // load settings from file
+  let settings = {};
+  try {
+    const loadedSettings = JSON.parse(fs.readFileSync(SETTINGS_PATH));
+    settings = { ...settings, ...loadedSettings };
+  } catch {}
+
   function saveStore() {
     fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2));
+  }
+
+  function saveSettings() {
+    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
   }
 
   // Token helpers
@@ -114,5 +127,20 @@ app.on('ready', () => {
 
   ipcMain.on('auth-success', () => {
     console.log('Auth success!');
+  });
+
+  ipcMain.handle('get-scraper-settings', () => {
+    return settings;
+  });
+  
+  ipcMain.handle('save-scraper-settings', (event, newSettings) => {
+    try {
+      settings = { ...settings, ...newSettings }; // merge new settings into existing ones
+      saveSettings(); // save the settings to file
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+      return { success: false, error: error.message };
+    }
   });
 });
