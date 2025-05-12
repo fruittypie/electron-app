@@ -30,7 +30,12 @@ export default function Menu({ onStart, onSettings }) {
     <div className="h-screen flex flex-col items-center justify-center space-y-6 bg-gray-50 dark:bg-gray-900">
       <button
         onClick={onStart}
-        className="w-48 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-md shadow-lg transition"
+        disabled={!hasSettings}
+        className={`w-48 py-3 font-semibold rounded-md shadow-lg transition ${
+          hasSettings 
+            ? 'bg-green-600 hover:bg-green-700 text-white' 
+            : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+        }`}
       >
         Start Scraper
       </button>
