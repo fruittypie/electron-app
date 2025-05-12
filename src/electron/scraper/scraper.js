@@ -65,6 +65,8 @@ export const startScraping = async (scraperSettings) => {
         }).catch(() => false); 
         if (isLoginFailed) {
             console.log('Login failed: Invalid email or password');
+            await browser.close(); 
+            process.exit(1);
         }
         // navigate to campaign search
         await page.goto('https://creator.im.skeepers.io/campaigns/search');
