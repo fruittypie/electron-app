@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 
 export default function Menu({ onSettings }) {
   const [hasSettings, setHasSettings] = useState(false);
-  const [settings, setSettings] = useState({});
+  const [isScriptRunning, setIsScriptRunning] = useState(false);
+  const [buttonText, setButtonText] = useState('Start Scraper');
 
   useEffect(() => {
     // fetching the settings from the main process IPC
@@ -25,19 +26,38 @@ export default function Menu({ onSettings }) {
       console.log("Settings are missing.");
       return;
     }
-
-    try {
-      // Trigger Puppeteer script via IPC and pass necessary settings
-      await window.electron.invoke('start-puppeteer-scraper', settings);
-    } catch (error) {
-      console.error('Error starting scraper:', error);
+  }
+  // start or stop the scraper
+  const handleButtonClick = async () => {
+    if (isScriptRunning) {
+      // stop the script if it's running
+      setIsScriptRunning(false);
+      setButtonText('Start Scraper');
+      try {
+        await window.electron.invoke('stop-puppeteer-scraper');  // Send stop request
+      } catch (error) {
+        console.error('Error stopping the script:', error);
+      }
+    } else {
+      // Start the script
+      console.log('Starting the script...');
+      setIsScriptRunning(true);
+      setButtonText('Stop Script');
+      try {
+        // Trigger the scraper start process
+        await window.electron.invoke('start-puppeteer-scraper', {});  // Pass necessary settings here
+      } catch (error) {
+        console.error('Error starting the script:', error);
+        setIsScriptRunning(false);
+        setButtonText('Start Script');
+      }
     }
   };
 
   return (
     <div className="h-screen flex flex-col items-center justify-center space-y-6 bg-gray-50 dark:bg-gray-900">
       <button
-        onClick={handleStartScraper}
+        onClick={handleButtonClick}
         disabled={!hasSettings}
         className={`w-48 py-3 font-semibold rounded-md shadow-lg transition ${
           hasSettings
@@ -45,7 +65,7 @@ export default function Menu({ onSettings }) {
             : 'bg-gray-400 text-gray-200 cursor-not-allowed'
         }`}
       >
-        Start Scraper
+        {buttonText}
       </button>
 
       <button

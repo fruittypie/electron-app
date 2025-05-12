@@ -5,7 +5,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { isDev } from './util.js';
 import { getPreloadPath } from './pathResolver.js';
-import { startScraping } from './scraper/scraper.js'; 
+import { startScraping, stopScraping } from './scraper/scraper.js'; 
 import dotenv from 'dotenv';
 
 
@@ -145,12 +145,17 @@ app.on('ready', () => {
     }
   });
 
-  // Handle start-puppeteer-scraper event
+  // handle start-puppeteer-scraper event
   ipcMain.handle('start-puppeteer-scraper', async (_, scraperSettings) => {
     // assign settings to the main process
     Object.assign(settings, scraperSettings); 
     // start Puppeteer script with settings
     await startScraping(settings); 
   });
-
+  
+  ipcMain.handle('stop-puppeteer-scraper', () => {
+    stopScraping(); // Call the exported stopScraping function
+    console.log("Stopping the scraping process...");
+    return { success: true };
+  });  
 });

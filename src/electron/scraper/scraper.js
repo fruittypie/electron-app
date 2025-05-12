@@ -11,6 +11,16 @@ import { orderProduct } from './orderService.js';
 // puppeteer stealth setup
 puppeteer.use(StealthPlugin());
 
+// control stopping the script
+let shouldStop = false;  
+
+// export the stopScraping function to allow external control
+export const stopScraping = () => {
+  shouldStop = true;
+  console.log("Stop flag set to true in scraper.js");
+};
+
+
 export const discordClient = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
@@ -66,18 +76,23 @@ export const startScraping = async (scraperSettings) => {
         if (isLoginFailed) {
             console.log('Login failed: Invalid email or password');
             await browser.close(); 
-            process.exit(1);
+            return;
         }
         // navigate to campaign search
         await page.goto('https://creator.im.skeepers.io/campaigns/search');
         await delay(SHORT_DELAY);
         
         // polling loop
-        while (true) {
+        while (!shouldStop) {
             try {
+                console.log('fisrt check shouldStop ', shouldStop);
                 await page.waitForSelector('.free-store');
                 await page.waitForSelector('.col-md-4.col-xs-6');
 
+                if (shouldStop) {
+                    console.log('Stop flag detected');
+                    break;
+                }
                 // extract products
                 const products = await page.evaluate(() => {
                     return Array.from(document.querySelectorAll('.col-md-4.col-xs-6')).map(card => {
@@ -109,6 +124,11 @@ export const startScraping = async (scraperSettings) => {
                     // update or insert the product in the database
                     const existing = getItem(product.title);
                     const currentStatus = product.status.trim().toLowerCase();
+
+                    if (shouldStop) {
+                        console.log('Stop flag detected');
+                        break;
+                    }
 
                     if (!existing) {
                         upsertItem(product.title, product.status);
@@ -146,7 +166,10 @@ export const startScraping = async (scraperSettings) => {
                         }
                     }               
                 }
-                
+                if (shouldStop) {
+                    console.log('Stop flag detected');
+                    break;
+                }
                 if (inStockProducts.length > 0) {
                     // short wait time, the product is in stock
                     await delay(SHORT_DELAY);
@@ -162,6 +185,11 @@ export const startScraping = async (scraperSettings) => {
                     console.error("Discord channel not found");
                 }
 
+                if (shouldStop) {
+                    break;
+                } 
+                console.log('second check shouldStop ', shouldStop);         
+
                 await page.reload();
 
             } catch (error) {
@@ -174,6 +202,8 @@ export const startScraping = async (scraperSettings) => {
                 }
             }
         }
+        console.log('Scraping stopped');
+        await browser.close();
     }
     main();
 };
