@@ -5,11 +5,19 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { isDev } from './util.js';
 import { getPreloadPath } from './pathResolver.js';
-import { startScraping, stopScraping } from './scraper/scraper.js'; 
+import { startScraping, stopScraping } from './scraper/scraper.js';
 import dotenv from 'dotenv';
 
 
 dotenv.config();
+
+let mainWindow;
+let scraperBrowser = null;
+let stopFlag = false;
+
+function emitFinished() {
+  if (mainWindow) mainWindow.webContents.send('scraper-finished');
+}
 
 app.on('ready', () => {
   const mainWindow = new BrowserWindow({
@@ -145,17 +153,30 @@ app.on('ready', () => {
     }
   });
 
-  // handle start-puppeteer-scraper event
   ipcMain.handle('start-puppeteer-scraper', async (_, scraperSettings) => {
-    // assign settings to the main process
-    Object.assign(settings, scraperSettings); 
-    // start Puppeteer script with settings
-    await startScraping(settings); 
+    // merge in any new settings
+    Object.assign(settings, scraperSettings);
+    stopFlag = false;
+
+    // launch Puppeteer without blocking the handler
+    (async () => {
+      try {
+        scraperBrowser = await startScraping(settings, () => {mainWindow.webContents.send('scraper-finished');});
+      } catch (err) {
+        console.error('Scraper error:', err);
+      } finally {
+        scraperBrowser = null;
+      }
+    })();
+
+    return { started: true };
   });
-  
-  ipcMain.handle('stop-puppeteer-scraper', () => {
-    stopScraping(); // Call the exported stopScraping function
-    console.log("Stopping the scraping process...");
-    return { success: true };
-  });  
+
+  ipcMain.handle('stop-puppeteer-scraper', async () => {
+  // flip the flag *inside* scraper.js
+  stopScraping();
+
+  return { stopping: true };
+});
+
 });

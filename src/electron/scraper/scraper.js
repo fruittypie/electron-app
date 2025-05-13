@@ -11,21 +11,17 @@ import { orderProduct } from './orderService.js';
 // puppeteer stealth setup
 puppeteer.use(StealthPlugin());
 
-// control stopping the script
-let shouldStop = false;  
-
-// export the stopScraping function to allow external control
+let stopFlag = false;
 export const stopScraping = () => {
-  shouldStop = true;
+  stopFlag = true;
   console.log("Stop flag set to true in scraper.js");
 };
-
 
 export const discordClient = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
 
-export const startScraping = async (scraperSettings) => {
+export const startScraping = async (scraperSettings, onDone) => {
     const { TOKEN, CHANNEL_ID, USER_ID, SHORT_DELAY } = process.env;
 
     const {  
@@ -39,8 +35,10 @@ export const startScraping = async (scraperSettings) => {
         minPrice
     } = scraperSettings;
 
-    // initialize Discord client
-    await discordClient.login(TOKEN);
+    // only log in to Discord if the user wants Discord notifications
+    if (notifyDiscord) {
+        await discordClient.login(TOKEN);
+    }
 
     const main = async () => {
         const browser = await puppeteer.launch({ 
@@ -83,13 +81,13 @@ export const startScraping = async (scraperSettings) => {
         await delay(SHORT_DELAY);
         
         // polling loop
-        while (!shouldStop) {
+        while (!stopFlag ) {
             try {
-                console.log('fisrt check shouldStop ', shouldStop);
+                console.log('fisrt check shouldStop ', stopFlag );
                 await page.waitForSelector('.free-store');
                 await page.waitForSelector('.col-md-4.col-xs-6');
 
-                if (shouldStop) {
+                if (stopFlag ) {
                     console.log('Stop flag detected');
                     break;
                 }
@@ -125,7 +123,7 @@ export const startScraping = async (scraperSettings) => {
                     const existing = getItem(product.title);
                     const currentStatus = product.status.trim().toLowerCase();
 
-                    if (shouldStop) {
+                    if (stopFlag ) {
                         console.log('Stop flag detected');
                         break;
                     }
@@ -166,7 +164,7 @@ export const startScraping = async (scraperSettings) => {
                         }
                     }               
                 }
-                if (shouldStop) {
+                if (stopFlag ) {
                     console.log('Stop flag detected');
                     break;
                 }
@@ -181,14 +179,16 @@ export const startScraping = async (scraperSettings) => {
                 if (channel) {
                     // clean up any messages older than 10 minutes
                 await cleanupExpiredMessages(channel, 10 * 60 * 1000, 24 * 60 * 60 * 1000);
+                } else if (!notifyDiscord) {
+                    continue;
                 } else {
                     console.error("Discord channel not found");
                 }
 
-                if (shouldStop) {
+                if (stopFlag ) {
                     break;
                 } 
-                console.log('second check shouldStop ', shouldStop);         
+                console.log('second check shouldStop ', stopFlag );         
 
                 await page.reload();
 
@@ -201,9 +201,10 @@ export const startScraping = async (scraperSettings) => {
                     break;
                 }
             }
-        }
+        } 
         console.log('Scraping stopped');
         await browser.close();
+        if (typeof onDone === 'function') onDone()
     }
     main();
 };

@@ -1,71 +1,85 @@
 import React, { useEffect, useState } from 'react';
 
 export default function Menu({ onSettings }) {
-  const [hasSettings, setHasSettings] = useState(false);
+  const [hasSettings,    setHasSettings]    = useState(false);
   const [isScriptRunning, setIsScriptRunning] = useState(false);
-  const [buttonText, setButtonText] = useState('Start Scraper');
+  const [isStopping,      setIsStopping]      = useState(false);
 
+  // Load saved settings and subscribe to "scraper-finished"
   useEffect(() => {
-    // fetching the settings from the main process IPC
-    const loadSettings = async () => {
+    (async () => {
       try {
-        const storedSettings = await window.electron.invoke('get-scraper-settings');
-        // check if necessary settings are available
-        setHasSettings(!!storedSettings.username && !!storedSettings.password);
-      } catch (error) {
-        console.error('Error loading settings:', error);
-        setHasSettings(false); // ensure we set to false in case of an error
+        const settings = await window.electron.invoke('get-scraper-settings');
+        setHasSettings(!!settings.username && !!settings.password);
+      } catch (err) {
+        console.error('Error loading settings:', err);
+        setHasSettings(false);
       }
+    })();
+
+    const onFinished = () => {
+      // Reset both flags when scraper ends
+      setIsStopping(false);
+      setIsScriptRunning(false);
     };
 
-    loadSettings();
+    window.electron.on('scraper-finished', onFinished);
+    return () => {
+      window.electron.off('scraper-finished', onFinished);
+    };
   }, []);
 
-  const handleStartScraper = async () => {
-    if (!hasSettings) {
-      console.log("Settings are missing.");
-      return;
-    }
-  }
-  // start or stop the scraper
   const handleButtonClick = async () => {
     if (isScriptRunning) {
-      // stop the script if it's running
+      // stop flow
+      setIsStopping(true);
       setIsScriptRunning(false);
-      setButtonText('Start Scraper');
       try {
-        await window.electron.invoke('stop-puppeteer-scraper');  // Send stop request
-      } catch (error) {
-        console.error('Error stopping the script:', error);
+        await window.electron.invoke('stop-puppeteer-scraper');
+        // renderer will reset flags when scraper-finished arrives
+      } catch (err) {
+        console.error('Error stopping scraper:', err);
+        // fallback reset on error
+        setIsStopping(false);
       }
     } else {
-      // Start the script
-      console.log('Starting the script...');
+      // start flow
+      if (!hasSettings) {
+        console.warn('Cannot start: settings missing');
+        return;
+      }
+      setIsStopping(false);
       setIsScriptRunning(true);
-      setButtonText('Stop Script');
       try {
-        // Trigger the scraper start process
-        await window.electron.invoke('start-puppeteer-scraper', {});  // Pass necessary settings here
-      } catch (error) {
-        console.error('Error starting the script:', error);
+        await window.electron.invoke('start-puppeteer-scraper');
+        // scraper-finished will fire later
+      } catch (err) {
+        console.error('Error starting scraper:', err);
+        // fallback reset on error
         setIsScriptRunning(false);
-        setButtonText('Start Script');
       }
     }
   };
+
+  // derive the button label
+  const buttonLabel = isStopping
+    ? 'Stopping…'
+    : isScriptRunning
+      ? 'Stop Script'
+      : 'Start Scraper';
 
   return (
     <div className="h-screen flex flex-col items-center justify-center space-y-6 bg-gray-50 dark:bg-gray-900">
       <button
         onClick={handleButtonClick}
-        disabled={!hasSettings}
+        disabled={!hasSettings || isStopping}
         className={`w-48 py-3 font-semibold rounded-md shadow-lg transition ${
-          hasSettings
-            ? 'bg-green-600 hover:bg-green-700 text-white'
-            : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+          !hasSettings || isStopping
+            ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+            : 'bg-green-600 hover:bg-green-700 text-white'
         }`}
       >
-        {buttonText}
+        {buttonLabel}
       </button>
 
       <button
