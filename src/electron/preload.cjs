@@ -6,7 +6,9 @@ contextBridge.exposeInMainWorld('authAPI', {
   logout: (email) => ipcRenderer.invoke('auth-logout', { email }),
   verifyToken: (token) => ipcRenderer.invoke('auth-verify-token', { token }),
   notifyAuthSuccess: (token) => ipcRenderer.send('auth-success', { token }) ,
-  getTokens: () => ipcRenderer.invoke('auth-getTokens')
+  getTokens: () => ipcRenderer.invoke('auth-getTokens'),
+  getSettings: () => ipcRenderer.invoke('get-scraper-settings'),
+  saveSettings: newSettings => ipcRenderer.invoke('save-scraper-settings', newSettings)
 });
 
 contextBridge.exposeInMainWorld('electron', {

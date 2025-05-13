@@ -68,32 +68,32 @@ export default function Menu({ onSettings }) {
       ? 'Stop Script'
       : 'Start Scraper';
 
-  return (
-    <div className="h-screen flex flex-col items-center justify-center space-y-6 bg-gray-50 dark:bg-gray-900">
-      <button
-        onClick={handleButtonClick}
-        disabled={!hasSettings || isStopping}
-        className={`w-48 py-3 font-semibold rounded-md shadow-lg transition ${
-          !hasSettings || isStopping
-            ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
-            : 'bg-green-600 hover:bg-green-700 text-white'
-        }`}
-      >
-        {buttonLabel}
-      </button>
+ return (
+  <div className="w-1/3 bg-blue-200 dark:bg-blue-900 p-6 flex flex-col items-center justify-center space-y-6">
+    <button
+      onClick={handleButtonClick}
+      disabled={!hasSettings || isStopping}
+      className={`w-32 py-3 font-semibold text-white rounded-full shadow transition ${
+        !hasSettings || isStopping
+          ? 'bg-gray-400 cursor-not-allowed'
+          : 'bg-green-600 hover:bg-green-700'
+      }`}
+    >
+      {buttonLabel}
+    </button>
 
-      <button
-        onClick={onSettings}
-        className="w-48 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-md shadow-lg transition"
-      >
-        Settings
-      </button>
+    <button
+      onClick={onSettings}
+      className="w-32 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-full shadow transition"
+    >
+      Settings
+    </button>
 
-      {!hasSettings && (
-        <p className="text-red-500 text-sm text-center">
-          Please configure settings before starting the scraper
-        </p>
-      )}
-    </div>
-  );
+    {!hasSettings && (
+      <p className="text-red-500 text-sm text-center">
+        Please configure settings before starting the scraper
+      </p>
+    )}
+  </div>
+);
 }
