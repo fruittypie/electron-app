@@ -10,6 +10,7 @@ import { notify } from './communication.js';
 puppeteer.use(StealthPlugin());
 
 let stopFlag = false;
+let browser = null;
 
 export const stopScraping = () => {
   stopFlag = true;
@@ -17,19 +18,21 @@ export const stopScraping = () => {
   notify({ text: '🛑 Stopping the scraper...' });
 };
 
-export const startScraping = async (scraperSettings, onDone) => {
+export const startScraping = async (scraperSettings) => {
   const { 
     headless, 
     username, 
     password, 
     intervalSec, 
-    autoOrder, 
   } = scraperSettings;
+
+  // Reset stop flag at the beginning
+  stopFlag = false;
 
   // Notify start
   await notify({ text: '🚀 Starting the scraper...' });
 
-  const browser = await puppeteer.launch({ headless });
+  browser = await puppeteer.launch({ headless });
   try {
     const page = await browser.newPage();
     // Browser setup
@@ -59,7 +62,7 @@ export const startScraping = async (scraperSettings, onDone) => {
     if (loginFailed) {
       await notify({ text: '❌ Login failed: Invalid credentials' });
       await browser.close();
-      onDone();
+      browser = null; // Make sure browser is set to null
       return;
     }
     await notify({ text: '✅ Logged in successfully' });
@@ -87,13 +90,26 @@ export const startScraping = async (scraperSettings, onDone) => {
           })
         );
 
-        for (const product of cards) {
-          if (product.status === 'in stock' && !getItem(product.title)) {
-            upsertItem(product.title, product.status);
-
-           await orderProduct(product, browser, settings);
+        // Process products only if scraper is still running
+        if (!stopFlag) {
+          for (const product of cards) {
+            if (stopFlag) break; // Exit the loop if stopping was requested
+            if (product.status === 'in stock' && !getItem(product.title)) {
+              upsertItem(product.title, product.status);
+              // Pass the browser instance to handle product processing
+              if (browser) {
+                try {
+                  await orderProduct(product, browser, scraperSettings);
+                } catch (err) {
+                  console.error(`Error processing product ${product.title}:`, err);
+                }
+              }
+            }
           }
         }
+
+        // Break the loop if stop was requested
+        if (stopFlag) break;
 
         // Delay between polls
         const waitTime = cards.some(p => p.status === 'in stock')
@@ -103,7 +119,11 @@ export const startScraping = async (scraperSettings, onDone) => {
 
         // Cleanup old messages if needed
         await cleanupExpiredMessages();
-        await page.reload();
+        
+        // Only reload if we're still running
+        if (!stopFlag) {
+          await page.reload();
+        }
       } catch (err) {
         await notify({ text: `⚠️ Scraping error: ${err.message}` });
         break;
@@ -115,7 +135,14 @@ export const startScraping = async (scraperSettings, onDone) => {
   } catch (err) {
     await notify({ text: `❌ Unexpected error: ${err.message}` });
   } finally {
-    await browser.close();
-    onDone();
+    // Clean browser close
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (err) {
+        console.error('Error closing browser:', err);
+      }
+      browser = null; // Make sure it's null after closing
+    }
   }
 };

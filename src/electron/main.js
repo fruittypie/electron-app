@@ -18,6 +18,7 @@ const STORE_PATH    = path.join(app.getPath('userData'), 'auth-store.json');
 const SETTINGS_PATH = path.join(app.getPath('userData'), 'scraper-settings.json');
 
 // In-memory state
+let isScraperRunning = false;
 let mainWindow;
 let scraperBrowser = null;
 let store = { users: {}, tokens: { accessToken: null, refreshToken: null } };
@@ -138,29 +139,24 @@ ipcMain.handle('save-scraper-settings', (_, newSettings) => {
 
 // Scraper control handlers
 ipcMain.handle('start-puppeteer-scraper', (_, scraperSettings) => {
-  // merge & persist new settings
   Object.assign(settings, scraperSettings);
   saveSettings();
+  isScraperRunning = true;
 
-  (async () => {
-    try {
-      // startScraping takes settings, onProductFound
-      scraperBrowser = await startScraping(settings, async (product, browser) => {
-        // for each in-stock product, immediately invoke the merged orderService
-        await orderProduct(product, browser, settings);
-      });
-    } catch (err) {
-      console.error('Scraper error:', err);
-    } finally {
-      // clean up, notify UI that scraping has finished
+  startScraping(settings)
+    .then(() => {
+      isScraperRunning = false;
       scraperBrowser = null;
       emitFinished();
-    }
-  })();
-
+    })
+    .catch(err => {
+      console.error('Scraper error:', err);
+      isScraperRunning = false;
+      scraperBrowser = null;
+      emitFinished();
+    });
   return { started: true };
 });
-
 
 ipcMain.handle('stop-puppeteer-scraper', () => {
   stopScraping();
@@ -169,14 +165,18 @@ ipcMain.handle('stop-puppeteer-scraper', () => {
 
 // In-app order handlers
 ipcMain.handle('order-product', async (_, product) => {
+  if (!isScraperRunning || !scraperBrowser) {
+    return { success: false, error: 'Scraper is not running.' };
+  }
   try {
-    await orderProduct(product, scraperBrowser);
+    await orderProduct(product, scraperBrowser, settings);
     return { success: true };
   } catch (err) {
     console.error('Order failed:', err);
     return { success: false, error: err.message };
   }
 });
+
 
 ipcMain.handle('skip-product', (_, product) => {
   return { success: true };
