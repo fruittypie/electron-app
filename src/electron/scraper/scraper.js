@@ -118,7 +118,9 @@ export const startScraping = async (scraperSettings) => {
         await delay(waitTime);
 
         // Cleanup old messages if needed
-        await cleanupExpiredMessages();
+        if (notifyDiscord && discordClient) {
+          await cleanupExpiredMessages();
+        }
         
         // Only reload if we're still running
         if (!stopFlag) {
