@@ -1,6 +1,6 @@
 import 'dotenv/config';
 const { CHANNEL_ID } = process.env;
-import { discordClient } from './scraper.js';
+import { discordClient } from './communication.js';
 // timer
 export const delay = ms => new Promise(r => setTimeout(r, ms));
 

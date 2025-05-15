@@ -1,118 +1,88 @@
-import pkg from 'discord.js';
-const { ActionRowBuilder, ButtonBuilder, EmbedBuilder, ButtonStyle } = pkg;
 import { delay } from './utils.js';
+import { sendMessage } from './communication.js';
 import 'dotenv/config';
 
-const { SHORT_DELAY} = process.env;
+const { SHORT_DELAY } = process.env;
 
-export async function orderProduct(product, browser, discordClient, CHANNEL_ID, USER_ID) {
-    const page = await browser.newPage();
+/**
+ * Places an order for the given product using Puppeteer.
+ * Sends unified notifications via sendMessage().
+ * @param {{ title: string, href: string }} product
+ * @param {import('puppeteer').Browser} browser
+ */
+export async function orderProduct(product, browser) {
+  const page = await browser.newPage();
+  try {
+    // Navigate to product page
+    const url = new URL(product.href, 'https://creator.im.skeepers.io').href;
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await delay(Number(SHORT_DELAY) || 2000);
+
+    // Extract price
+    let price = null;
     try {
-        // Open product page
-        const fullUrl = new URL(product.href, 'https://creator.im.skeepers.io');
-        await page.goto(fullUrl.href, { waitUntil: 'domcontentloaded' });
-        await delay(SHORT_DELAY);
-
-        // Extract price
-        let price = null;
-        try {
-            price = await page.$eval('div.mt-10 > div.text-muted:last-of-type', el =>
-                el.textContent.replace('Retail price', '').trim()
-            );
-        } catch (err) {
-            console.log(`Could not find price element for ${product.title}.`);
-        }
-        
-        let imageUrl = null;
-        try {
-            imageUrl = await page.$eval('img.img-responsive', el => el.getAttribute('src'));
-        } catch (err) {
-            console.log(`Could not find image for ${product.title}.`);
-        }
-
-        const embed = imageUrl
-        ? new EmbedBuilder()
-            .setTitle(product.title)
-            .setImage(imageUrl)                  
-        : null;
-
-        // Send a Discord message for confirmation
-        const channel = discordClient.channels.cache.get(CHANNEL_ID);
-        if (!channel) {
-            console.error("Discord channel not found");
-            return;
-        }
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId(`order_yes_${product.title}`)
-                .setLabel('Yes')
-                .setStyle(ButtonStyle.Success),
-            new ButtonBuilder()
-                .setCustomId(`order_no_${product.title}`)
-                .setLabel('No')
-                .setStyle(ButtonStyle.Danger)
-        );
-
-        const msg = await channel.send({
-            content: `🛍️ **Available:** ${product.title}\n💵 **Price:** ${price ?? 'N/A'}\nDo you want to order it?`,
-            embeds: embed ? [embed] : [],
-            components: [row]
-        });
-
-        // Wait up to 60 seconds for user confirmation without blocking other processes
-        try {
-            const filter = (i) =>
-                i.user.id === USER_ID &&
-                (i.customId === `order_yes_${product.title}` || i.customId === `order_no_${product.title}`);
-            const interaction = await msg.awaitMessageComponent({ filter, time: 60000 });
-            
-            if (interaction.customId.startsWith('order_yes')) {
-                await interaction.reply({ content: `✅ Ordering **${product.title}**...`, flags: 64 });
-                // Continue the ordering process
-                try {
-                    handleDeliveryPopup(page, product.title);
-                    await interaction.followUp({ content: `✅ **${product.title}** has been ordered`, flags: 64 });
-                } catch (err) {
-                    console.error(`Could not click order button for ${product.title}`, err);
-                }
-            } else {
-                await interaction.followUp({ content: `❌ Skipped **${product.title}**.`, flags: 64 });
-            }
-        } catch (err) {
-            if (err.name === 'TimeoutError') {
-                await msg.reply({ content: `⌛ Time is over for **${product.title}**.`, flags: 64 }).catch(() => {});
-            } else {
-                console.error("Interaction error:", err);
-            }
-        }
-    } catch (err) {
-        console.error(`Error in orderProduct for ${product.title}:`, err);
-    } finally {
-        await page.close();
+      price = await page.$eval(
+        'div.mt-10 > div.text-muted:last-of-type',
+        el => el.textContent.replace('Retail price', '').trim()
+      );
+    } catch {
+      console.log(`Price not found for ${product.title}`);
     }
+
+    // Extract image URL
+    let imageUrl = null;
+    try {
+      imageUrl = await page.$eval('img.img-responsive', el => el.src);
+    } catch {
+      console.log(`Image not found for ${product.title}`);
+    }
+
+    // Notify ordering started
+    await sendMessage({
+      text: `✅ Ordering **${product.title}**${price ? ` at $${price}` : ''}`
+    });
+
+    // Perform the delivery popup flow
+    await handleDeliveryPopup(page, product.title);
+
+    // Notify order completed
+    await sendMessage({
+      text: `🎉 **${product.title}** has been ordered successfully!`
+    });
+  } catch (err) {
+    console.error(`Error ordering ${product.title}:`, err);
+    await sendMessage({
+      text: `❌ Failed to order **${product.title}**: ${err.message}`
+    });
+  } finally {
+    await page.close();
+  }
 }
 
- // confirm final order
+/**
+ * Handles the final confirmation steps in the delivery popup.
+ * @param {import('puppeteer').Page} page
+ * @param {string} productTitle
+ */
 export async function handleDeliveryPopup(page, productTitle) {
-    console.log('popup function started');
-    // hit order button
-    await page.waitForSelector('skp-button[text="Order"] button', { timeout: 10000 });
-    await page.click('skp-button[text="Order"] button');
-    // wait for the pop-up
-    await page.waitForSelector('dialog[open]', { timeout: 10000 });
-  
-    // confirm address checkbox
-    const addr = await page.$('#checkAddress');
-    if (addr) await addr.click();
-  
-    // confirm each rule
-    for (const selector of ['#requestedViewCount', '#licensing_checkbox']) {
-      const checkbox = await page.$(selector);
-      if (checkbox) await checkbox.click();
-    }
-  
-    // final click
-    await page.click('button.btn-responsive.btn-order-campaign.btn.btn-primary');
-    console.log(`✅ Final “Order” clicked for ${productTitle}`);
+  // Click the "Order" button to open the popup
+  await page.waitForSelector('skp-button[text="Order"] button', { timeout: 10000 });
+  await page.click('skp-button[text="Order"] button');
+
+  // Wait for dialog
+  await page.waitForSelector('dialog[open]', { timeout: 10000 });
+
+  // Confirm address checkbox
+  const addr = await page.$('#checkAddress');
+  if (addr) await addr.click();
+
+  // Confirm other rules
+  for (const selector of ['#requestedViewCount', '#licensing_checkbox']) {
+    const chk = await page.$(selector);
+    if (chk) await chk.click();
+  }
+
+  // Finalize order
+  await page.click('button.btn-responsive.btn-order-campaign.btn.btn-primary');
+  await delay(500); // brief wait
 }

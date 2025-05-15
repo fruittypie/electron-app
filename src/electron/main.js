@@ -3,180 +3,177 @@ import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
+import { Client, GatewayIntentBits } from 'discord.js';
 import { isDev } from './util.js';
 import { getPreloadPath } from './pathResolver.js';
 import { startScraping, stopScraping } from './scraper/scraper.js';
-import dotenv from 'dotenv';
-
+import { orderProduct } from './scraper/orderService.js';
+import { initComm } from './scraper/communication.js';
 
 dotenv.config();
 
+// Paths for persisting data
+const STORE_PATH    = path.join(app.getPath('userData'), 'auth-store.json');
+const SETTINGS_PATH = path.join(app.getPath('userData'), 'scraper-settings.json');
+
+// In-memory state
 let mainWindow;
 let scraperBrowser = null;
-let stopFlag = false;
+let store = { users: {}, tokens: { accessToken: null, refreshToken: null } };
+let settings = {};
 
+// Helpers to load/save JSON
+function saveStore() {
+  fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2));
+}
+function saveSettings() {
+  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
+}
+
+// Initialize store and settings from disk
+try {
+  const data = fs.readFileSync(STORE_PATH);
+  store = { ...store, ...JSON.parse(data) };
+} catch {}
+try {
+  const data = fs.readFileSync(SETTINGS_PATH);
+  settings = { ...settings, ...JSON.parse(data) };
+} catch {}
+
+// Notify renderer that scraping finished
 function emitFinished() {
   if (mainWindow) mainWindow.webContents.send('scraper-finished');
 }
 
-app.on('ready', () => {
-  const mainWindow = new BrowserWindow({
+// App ready: create window, set up communication
+app.whenReady().then(async () => {
+  // Create main window
+  mainWindow = new BrowserWindow({
     webPreferences: {
       preload: getPreloadPath(),
-      additionalArguments: [`--jwt-secret=${process.env.JWT_SECRET}`],
-    },
+      additionalArguments: [`--jwt-secret=${process.env.JWT_SECRET}`]
+    }
   });
 
+  // Load UI
   if (isDev()) {
     mainWindow.loadURL('http://localhost:5123');
   } else {
     mainWindow.loadFile(path.join(app.getAppPath(), '/dist-react/index.html'));
   }
 
-  // path to store data
-  const STORE_PATH = path.join(app.getPath('userData'), 'auth-store.json');
-  const SETTINGS_PATH = path.join(app.getPath('userData'), 'scraper-settings.json');
-
-  // load store from file
-  let store = { users: {}, tokens: { accessToken: null, refreshToken: null } };
-  try {
-    const loaded = JSON.parse(fs.readFileSync(STORE_PATH));
-    store = { ...store, ...loaded };
-  } catch {}
-  // load settings from file
-  let settings = {};
-  try {
-    const loadedSettings = JSON.parse(fs.readFileSync(SETTINGS_PATH));
-    settings = { ...settings, ...loadedSettings };
-  } catch {}
-
-  function saveStore() {
-    fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2));
-  }
-
-  function saveSettings() {
-    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
-  }
-
-  // Token helpers
-  function saveTokens({ accessToken, refreshToken }) {
-    store.tokens = { accessToken, refreshToken };
-    saveStore();
-  }
-
-  function getTokens() {
-    return store.tokens;
-  }
-
-  // Register handler
-  ipcMain.handle('auth-register', async (_, { email, password }) => {
-    if (store.users[email]) {
-      return { ok: false, message: 'Email already registered' };
-    }
-
-    const hash = await bcrypt.hash(password, 12);
-
-    if (!safeStorage.isEncryptionAvailable()) {
-      return { ok: false, message: 'Encryption not available on this platform' };
-    }
-
-    const encrypted = safeStorage.encryptString(hash).toString('base64');
-    store.users[email] = encrypted;
-    saveStore();
-
-    const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '1h' });
-    saveTokens({ accessToken: token, refreshToken: null });
-
-    return { ok: true, token };
-  });
-
-  // Login handler
-  ipcMain.handle('auth-login', async (_, { email, password }) => {
-    const encrypted = store.users[email];
-    if (!encrypted) return { ok: false, message: 'User not found' };
-
-    if (!safeStorage.isEncryptionAvailable()) {
-      return { ok: false, message: 'Encryption not available' };
-    }
-
-    const buffer = Buffer.from(encrypted, 'base64');
-    const savedHash = safeStorage.decryptString(buffer);
-    const valid = await bcrypt.compare(password, savedHash);
-    if (!valid) return { ok: false, message: 'Invalid credentials' };
-
-    const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '1h' });
-    saveTokens({ accessToken: token, refreshToken: null });
-
-    return { ok: true, token };
-  });
-
-  // Logout handler
-  ipcMain.handle('auth-logout', async (_, { email }) => {
-    delete store.users[email];
-    store.tokens = { accessToken: null, refreshToken: null };
-    saveStore();
-    return { ok: true };
-  });
-
-  // Verify token
-  ipcMain.handle('auth-verify-token', async (_, { token }) => {
+  // Set up Discord client if needed
+  const discordClient = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
+  if (settings.notifyDiscord) {
     try {
-      const payload = jwt.verify(token, process.env.JWT_SECRET);
-      return { ok: true, payload };
-    } catch {
-      return { ok: false, message: 'Invalid or expired token' };
+      await discordClient.login(process.env.TOKEN);
+    } catch (err) {
+      console.error('Discord login failed:', err);
     }
-  });
+  }
 
-  // Get stored tokens
-  ipcMain.handle('auth-getTokens', async () => {
-    return getTokens();
-  });
+  // Initialize communication hub (for IPC & Discord)
+  initComm({ window: mainWindow, discord: discordClient, settings });
+});
 
-  ipcMain.on('auth-success', () => {
-    console.log('Auth success!');
-  });
+// ========== IPC Handlers ========== //
 
-  ipcMain.handle('get-scraper-settings', () => {
-    return settings;
-  });
-  
-  ipcMain.handle('save-scraper-settings', (event, newSettings) => {
+// Authentication handlers
+ipcMain.handle('auth-register', async (_, { email, password }) => {
+  if (store.users[email]) return { ok: false, message: 'Email already registered' };
+  const hash = await bcrypt.hash(password, 12);
+  if (!safeStorage.isEncryptionAvailable()) {
+    return { ok: false, message: 'Encryption not available' };
+  }
+  const encrypted = safeStorage.encryptString(hash).toString('base64');
+  store.users[email] = encrypted;
+  const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '1h' });
+  store.tokens = { accessToken: token, refreshToken: null };
+  saveStore();
+  return { ok: true, token };
+});
+
+ipcMain.handle('auth-login', async (_, { email, password }) => {
+  const encrypted = store.users[email];
+  if (!encrypted) return { ok: false, message: 'User not found' };
+  if (!safeStorage.isEncryptionAvailable()) {
+    return { ok: false, message: 'Encryption not available' };
+  }
+  const savedHash = safeStorage.decryptString(Buffer.from(encrypted, 'base64'));
+  if (!await bcrypt.compare(password, savedHash)) {
+    return { ok: false, message: 'Invalid credentials' };
+  }
+  const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '1h' });
+  store.tokens = { accessToken: token, refreshToken: null };
+  saveStore();
+  return { ok: true, token };
+});
+
+ipcMain.handle('auth-logout', async (_, { email }) => {
+  delete store.users[email];
+  store.tokens = { accessToken: null, refreshToken: null };
+  saveStore();
+  return { ok: true };
+});
+
+ipcMain.handle('auth-verify-token', async (_, { token }) => {
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    return { ok: true, payload };
+  } catch {
+    return { ok: false, message: 'Invalid or expired token' };
+  }
+});
+
+ipcMain.handle('auth-getTokens', async () => ({ accessToken: store.tokens.accessToken, refreshToken: store.tokens.refreshToken }));
+
+// Settings handlers
+ipcMain.handle('get-scraper-settings', () => settings);
+ipcMain.handle('save-scraper-settings', (_, newSettings) => {
+  settings = { ...settings, ...newSettings };
+  saveSettings();
+  return { success: true };
+});
+
+// Scraper control handlers
+ipcMain.handle('start-puppeteer-scraper', (_, scraperSettings) => {
+  Object.assign(settings, scraperSettings);
+  saveSettings();
+  (async () => {
     try {
-      // merge new settings into existing ones
-      settings = { ...settings, ...newSettings }; 
-      saveSettings(); 
-      return { success: true };
-    } catch (error) {
-      console.error('Failed to save settings:', error);
-      return { success: false, error: error.message };
+      scraperBrowser = await startScraping(settings, emitFinished);
+    } catch (err) {
+      console.error('Scraper error:', err);
+      emitFinished();
+    } finally {
+      scraperBrowser = null;
     }
-  });
+  })();
+  return { started: true };
+});
 
-  ipcMain.handle('start-puppeteer-scraper', async (_, scraperSettings) => {
-    // merge in any new settings
-    Object.assign(settings, scraperSettings);
-    stopFlag = false;
-
-    // launch Puppeteer without blocking the handler
-    (async () => {
-      try {
-        scraperBrowser = await startScraping(settings, () => {mainWindow.webContents.send('scraper-finished');});
-      } catch (err) {
-        console.error('Scraper error:', err);
-      } finally {
-        scraperBrowser = null;
-      }
-    })();
-
-    return { started: true };
-  });
-
-  ipcMain.handle('stop-puppeteer-scraper', async () => {
-  // flip the flag *inside* scraper.js
+ipcMain.handle('stop-puppeteer-scraper', () => {
   stopScraping();
-
   return { stopping: true };
 });
 
+// In-app order handlers
+ipcMain.handle('order-product', async (_, product) => {
+  try {
+    await orderProduct(product, scraperBrowser);
+    return { success: true };
+  } catch (err) {
+    console.error('Order failed:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('skip-product', (_, product) => {
+  return { success: true };
+});
+
+// Ensure the app quits cleanly on all windows closed
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
 });
