@@ -6,8 +6,16 @@ import 'dotenv/config';
 const { EmbedBuilder } = pkg;
 const { SHORT_DELAY = 5000 } = process.env;
 
-// fetch product details (price & image), then either auto-order or notify the user.
+// fetch product details (price & image), then either auto-order or notify the user
 export async function orderProduct(product, browser, settings) {
+  // check to prevent errors when browser is null
+  if (!browser) {
+    console.error('Browser is not initialized for ordering');
+    await notify({
+      text: `❌ Failed to order **${product.title}**: Browser is not available`
+    });
+    return;
+  }
   const page = await browser.newPage();
   try {
     // Navigate to product page
@@ -25,7 +33,7 @@ export async function orderProduct(product, browser, settings) {
     } catch {
       console.log(`Price not found for ${product.title}`);
     }
-    const priceNum = parseFloat((priceText || '').replace(/[^0-9.]/g, '')) || Infinity;
+    const priceNum = parseFloat((price || '').replace(/[^0-9.]/g, '')) || Infinity;
 
     // Extract image URL
     let imageUrl = null;
@@ -43,23 +51,23 @@ export async function orderProduct(product, browser, settings) {
     const { autoOrder = false, minPrice = Infinity, keywords = [] } = settings;
     const priceMatch = autoOrder && priceNum >= minPrice;
     const keywordMatch = autoOrder && 
-      keywords.some( kw=> products.title.toLowerCase().includes(kw.toLowerCase()));
+      keywords.some( kw => product.title.toLowerCase().includes(kw.toLowerCase()));
     
     // auto-order path
     if (priceMatch || keywordMatch) {
         await notify({
-            text: `Auto-ordering **${details.title}** — $${details.price}`,
+            text: `Auto-ordering **${product.title}** — $${product.price}`,
             embed
         });
             
         await finalizeOrder(page, product.title);
         await notify({
-            text: `✅ **${details.title}** auto-ordered successfully!`
+            text: `✅ **${product.title}** auto-ordered successfully!`
         });
     // manual path
     } else {
       const userConfirmed = await promptOrder(
-        { title: product.title, href: product.href, price: priceText, imageUrl },
+        { title: product.title, href: product.href, price: price, imageUrl },
         embed
       );
       if (userConfirmed) {
@@ -83,7 +91,11 @@ export async function orderProduct(product, browser, settings) {
       text: `❌ Failed to order **${product.title}**: ${err.message}`
     });
   } finally {
-    await page.close();
+    if (page) {
+      await page.close().catch(err => {
+        console.error('Error closing page:', err);
+      });
+    }
   }
 }
 
