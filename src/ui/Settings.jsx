@@ -10,7 +10,8 @@ export default function Settings({ settings, onSave, onBack }) {
     notifyInApp: settings?.notifyInApp ?? false,
     notifyDiscord: settings?.notifyDiscord ?? false,
     autoOrder: settings?.autoOrder ?? false,
-    minPrice: settings?.minPrice ?? 0
+    minPrice: settings?.minPrice ?? 0,
+    keywords: settings?.keywords?.join(', ') ?? ',',
   });
 
   const [errors, setErrors] = useState({});
@@ -28,7 +29,8 @@ export default function Settings({ settings, onSave, onBack }) {
       notifyInApp: settings.notifyInApp,
       notifyDiscord: settings.notifyDiscord,
       autoOrder: settings.autoOrder,
-      minPrice: settings.minPrice
+      minPrice: settings.minPrice,
+      keywords: (settings.keywords || []).join(', '),
     });
     setErrors({});
     setSaveError(null);
@@ -192,6 +194,18 @@ export default function Settings({ settings, onSave, onBack }) {
             {errors.minPrice && (
               <p className="text-red-500 text-sm mt-1">{errors.minPrice}</p>
             )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Auto-Order Keywords (comma-separated)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. shampoo, Olapex"
+                  value={form.keywords}
+                  onChange={e => handleChange('keywords', e.target.value)}
+                  className="w-full px-4 py-2 border rounded bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:outline-none border-gray-300 dark:border-gray-600 focus:ring-indigo-500"
+                />
+            </div>
           </div>
         )}
       </section>
