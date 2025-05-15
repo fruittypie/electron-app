@@ -42,20 +42,3 @@ export async function cleanupExpiredMessages(channel, minAgeMs = 10 * 60 * 1000,
       console.error('Error during ranged message cleanup:', err);
     }
 }
-
-export async function sendMessage(content) {
-    // get the channel object
-    const channel = discordClient.channels.cache.get(CHANNEL_ID);
-    if (!channel) {
-      console.error("Discord channel not found for sendMessage");
-      return;
-    }
-  
-    try {
-      // send a message
-      await channel.send(content);
-      console.log("Message sent via bot:", content);
-    } catch (err) {
-      console.error("Error sending message via bot:", err);
-    }
-}

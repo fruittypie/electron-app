@@ -1,5 +1,5 @@
 import { delay } from './utils.js';
-import { sendMessage, promptOrder } from './communication.js';
+import { notify, promptOrder } from './communication.js';
 import pkg from 'discord.js';
 import 'dotenv/config';
 

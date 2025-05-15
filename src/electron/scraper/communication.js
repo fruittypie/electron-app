@@ -1,4 +1,3 @@
-
 import { ipcMain } from 'electron';
 import pkg from 'discord.js';
 const {

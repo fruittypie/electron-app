@@ -4,8 +4,7 @@ import 'dotenv/config';
 import { delay, rejectCookies, cleanupExpiredMessages } from './utils.js';
 import { getItem, upsertItem } from './db.js';
 import { orderProduct } from './orderService.js';
-import { sendMessage } from './communication.js';
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { notify } from './communication.js';
 
 // Enable stealth plugin
 puppeteer.use(StealthPlugin());
@@ -15,14 +14,20 @@ let stopFlag = false;
 export const stopScraping = () => {
   stopFlag = true;
   // Notify UI and Discord that stopping was requested
-  sendMessage({ text: '🛑 Stopping the scraper...' });
+  notify({ text: '🛑 Stopping the scraper...' });
 };
 
 export const startScraping = async (scraperSettings, onDone) => {
-  const { headless, username, password, intervalSec, autoOrder } = scraperSettings;
+  const { 
+    headless, 
+    username, 
+    password, 
+    intervalSec, 
+    autoOrder, 
+  } = scraperSettings;
 
   // Notify start
-  await sendMessage({ text: '🚀 Starting the scraper...' });
+  await notify({ text: '🚀 Starting the scraper...' });
 
   const browser = await puppeteer.launch({ headless });
   try {
@@ -34,7 +39,7 @@ export const startScraping = async (scraperSettings, onDone) => {
     await page.setCacheEnabled(false);
 
     // Navigate to login
-    await sendMessage({ text: '🔐 Navigating to login page...' });
+    await notify({ text: '🔐 Navigating to login page...' });
     await page.goto('https://creator.im.skeepers.io/auth/signin/en');
     await delay(scraperSettings.SHORT_DELAY || 5000);
     await page.waitForSelector('form#signin');
@@ -52,12 +57,12 @@ export const startScraping = async (scraperSettings, onDone) => {
       )
       .catch(() => false);
     if (loginFailed) {
-      await sendMessage({ text: '❌ Login failed: Invalid credentials' });
+      await notify({ text: '❌ Login failed: Invalid credentials' });
       await browser.close();
       onDone();
       return;
     }
-    await sendMessage({ text: '✅ Logged in successfully' });
+    await notify({ text: '✅ Logged in successfully' });
 
     // Navigate to campaigns search
     await page.goto('https://creator.im.skeepers.io/campaigns/search');
@@ -86,30 +91,7 @@ export const startScraping = async (scraperSettings, onDone) => {
           if (product.status === 'in stock' && !getItem(product.title)) {
             upsertItem(product.title, product.status);
 
-            // Build embed and buttons
-            const embed = new EmbedBuilder().setTitle(product.title);
-            const row = new ActionRowBuilder().addComponents(
-              new ButtonBuilder()
-                .setCustomId(`order_yes_${product.title}`)
-                .setLabel('Yes')
-                .setStyle(ButtonStyle.Success),
-              new ButtonBuilder()
-                .setCustomId(`order_no_${product.title}`)
-                .setLabel('No')
-                .setStyle(ButtonStyle.Danger)
-            );
-
-            // Notify in-app and Discord
-            await sendMessage({
-              text: `🛒 **${product.title}** is in stock!`,
-              embed,
-              components: [row]
-            });
-
-            // Auto-order if enabled
-            if (autoOrder) {
-              await orderProduct(product, browser);
-            }
+           await orderProduct(product, browser, settings);
           }
         }
 
@@ -123,15 +105,15 @@ export const startScraping = async (scraperSettings, onDone) => {
         await cleanupExpiredMessages();
         await page.reload();
       } catch (err) {
-        await sendMessage({ text: `⚠️ Scraping error: ${err.message}` });
+        await notify({ text: `⚠️ Scraping error: ${err.message}` });
         break;
       }
     }
 
     // Notify stopped
-    await sendMessage({ text: '🏁 The scraper has stopped' });
+    await notify({ text: '🏁 The scraper has stopped' });
   } catch (err) {
-    await sendMessage({ text: `❌ Unexpected error: ${err.message}` });
+    await notify({ text: `❌ Unexpected error: ${err.message}` });
   } finally {
     await browser.close();
     onDone();

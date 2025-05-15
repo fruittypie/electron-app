@@ -74,7 +74,7 @@ app.whenReady().then(async () => {
   }
 
   // Initialize communication hub (for IPC & Discord)
-  initComm({ window: mainWindow, discord: discordClient, settings });
+  initComm({ window: mainWindow, discord: discordClient, userSettings: settings });
 });
 
 // ========== IPC Handlers ========== //
@@ -138,20 +138,29 @@ ipcMain.handle('save-scraper-settings', (_, newSettings) => {
 
 // Scraper control handlers
 ipcMain.handle('start-puppeteer-scraper', (_, scraperSettings) => {
+  // merge & persist new settings
   Object.assign(settings, scraperSettings);
   saveSettings();
+
   (async () => {
     try {
-      scraperBrowser = await startScraping(settings, emitFinished);
+      // startScraping takes settings, onProductFound
+      scraperBrowser = await startScraping(settings, async (product, browser) => {
+        // for each in-stock product, immediately invoke the merged orderService
+        await orderProduct(product, browser, settings);
+      });
     } catch (err) {
       console.error('Scraper error:', err);
-      emitFinished();
     } finally {
+      // clean up, notify UI that scraping has finished
       scraperBrowser = null;
+      emitFinished();
     }
   })();
+
   return { started: true };
 });
+
 
 ipcMain.handle('stop-puppeteer-scraper', () => {
   stopScraping();
