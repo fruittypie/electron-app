@@ -1,16 +1,13 @@
 import { delay } from './utils.js';
-import { sendMessage } from './communication.js';
+import { sendMessage, promptOrder } from './communication.js';
+import pkg from 'discord.js';
 import 'dotenv/config';
 
-const { SHORT_DELAY } = process.env;
+const { EmbedBuilder } = pkg;
+const { SHORT_DELAY = 5000 } = process.env;
 
-/**
- * Places an order for the given product using Puppeteer.
- * Sends unified notifications via sendMessage().
- * @param {{ title: string, href: string }} product
- * @param {import('puppeteer').Browser} browser
- */
-export async function orderProduct(product, browser) {
+// fetch product details (price & image), then either auto-order or notify the user.
+export async function orderProduct(product, browser, settings) {
   const page = await browser.newPage();
   try {
     // Navigate to product page
@@ -28,6 +25,7 @@ export async function orderProduct(product, browser) {
     } catch {
       console.log(`Price not found for ${product.title}`);
     }
+    const priceNum = parseFloat((priceText || '').replace(/[^0-9.]/g, '')) || Infinity;
 
     // Extract image URL
     let imageUrl = null;
@@ -37,21 +35,51 @@ export async function orderProduct(product, browser) {
       console.log(`Image not found for ${product.title}`);
     }
 
-    // Notify ordering started
-    await sendMessage({
-      text: `✅ Ordering **${product.title}**${price ? ` at $${price}` : ''}`
-    });
+    // build an embed for rich messages
+    const embed = new EmbedBuilder().setTitle(product.title);
+    if (imageUrl) embed.setImage(imageUrl);
 
-    // Perform the delivery popup flow
-    await handleDeliveryPopup(page, product.title);
+    // Auto-order || manual order
+    const { autoOrder = false, minPrice = Infinity, keywords = [] } = settings;
+    const priceMatch = autoOrder && priceNum >= minPrice;
+    const keywordMatch = autoOrder && 
+      keywords.some( kw=> products.title.toLowerCase().includes(kw.toLowerCase()));
+    
+    // auto-order path
+    if (priceMatch || keywordMatch) {
+        await notify({
+            text: `Auto-ordering **${details.title}** — $${details.price}`,
+            embed
+        });
+            
+        await finalizeOrder(page, product.title);
+        await notify({
+            text: `✅ **${details.title}** auto-ordered successfully!`
+        });
+    // manual path
+    } else {
+      const userConfirmed = await promptOrder(
+        { title: product.title, href: product.href, price: priceText, imageUrl },
+        embed
+      );
+      if (userConfirmed) {
+        await notify({
+          text: `Ordering **${product.title}**…`
+        });
 
-    // Notify order completed
-    await sendMessage({
-      text: `🎉 **${product.title}** has been ordered successfully!`
-    });
+        await finalizeOrder(page, product.title);
+        await notify({
+          text: `🎉 **${product.title}** has been ordered!`
+        });
+      } else {
+        await notify({
+          text: `⏭️ Skipped **${product.title}**.`
+        });
+      }
+    }
   } catch (err) {
-    console.error(`Error ordering ${product.title}:`, err);
-    await sendMessage({
+    console.error(`Error in orderProduct for ${product.title}:`, err);
+    await notify({
       text: `❌ Failed to order **${product.title}**: ${err.message}`
     });
   } finally {
@@ -59,12 +87,7 @@ export async function orderProduct(product, browser) {
   }
 }
 
-/**
- * Handles the final confirmation steps in the delivery popup.
- * @param {import('puppeteer').Page} page
- * @param {string} productTitle
- */
-export async function handleDeliveryPopup(page, productTitle) {
+export async function finalizeOrder(page) {
   // Click the "Order" button to open the popup
   await page.waitForSelector('skp-button[text="Order"] button', { timeout: 10000 });
   await page.click('skp-button[text="Order"] button');
@@ -84,5 +107,5 @@ export async function handleDeliveryPopup(page, productTitle) {
 
   // Finalize order
   await page.click('button.btn-responsive.btn-order-campaign.btn.btn-primary');
-  await delay(500); // brief wait
+  await delay(); // brief wait
 }
