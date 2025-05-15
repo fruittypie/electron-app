@@ -1,6 +1,6 @@
 import 'dotenv/config';
-const { CHANNEL_ID } = process.env;
 import { discordClient } from './communication.js';
+
 // timer
 export const delay = ms => new Promise(r => setTimeout(r, ms));
 
@@ -24,21 +24,28 @@ export async function rejectCookies(page, shadowHostSelector, buttonSelector) {
 
 // delete Discord messages sent by a bot that offer already expired items
 export async function cleanupExpiredMessages(channel, minAgeMs = 10 * 60 * 1000, maxAgeMs = 24 * 60 * 60 * 1000) {
-    try {
-      const messages = await channel.messages.fetch({ limit: 100 });
-      const now = Date.now();
-  
-      for (const message of messages.values()) {
-        if (!message.author.bot) continue;
-  
-        const age = now - message.createdTimestamp;
-        if (age > minAgeMs && age < maxAgeMs) {
-          await message.delete().catch(err => {
-            console.error(`Failed to delete message ${message.id}:`, err);
-          });
-        }
-      }
-    } catch (err) {
-      console.error('Error during ranged message cleanup:', err);
+  try {
+    // Make sure Discord client exists and is logged in
+    if (!discordClient || !discordClient.isReady()) {
+      console.log('Discord client not available or not ready for message cleanup');
+      return;
     }
+    
+    const messages = await channel.messages.fetch({ limit: 100 });
+    const now = Date.now();
+
+    for (const message of messages.values()) {
+      if (!message.author.bot) continue;
+  
+      const age = now - message.createdTimestamp;
+      if (age > minAgeMs && age < maxAgeMs) {
+          await message.delete().catch(err => {
+              console.error(`Failed to delete message ${message.id}:`, err);
+          });
+      }
+    }
+  } catch (err) {
+      console.error('Error during ranged message cleanup:', err);
+  }
 }
+
