@@ -6,7 +6,6 @@ const {
   EmbedBuilder,
   ButtonStyle
 } = pkg;
-
 import { delay } from './utils.js';
 import 'dotenv/config';
 
@@ -18,15 +17,14 @@ export let settings       = {};
 export let initialized   = false;
 
 export function initComm({ window, discord, userSettings }) {
-  if (initialized) {
-    console.log('Communication already initialized, skipping');
-    return;
-  }
-
   mainWindow    = window;
   discordClient = discord;
-  settings     = userSettings;
   initialized   = true;
+  settings = {
+    ...userSettings,
+    CHANNEL_ID: process.env.CHANNEL_ID,
+    USER_ID:    process.env.USER_ID   
+  };
 }
 
 // one‐way notification to Discord and/or in‐app log

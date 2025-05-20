@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { discordClient } from './communication.js';
 
 // timer

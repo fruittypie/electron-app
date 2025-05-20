@@ -131,9 +131,11 @@ ipcMain.handle('auth-getTokens', async () => ({ accessToken: store.tokens.access
 
 // Settings handlers
 ipcMain.handle('get-scraper-settings', () => settings);
+
 ipcMain.handle('save-scraper-settings', (_, newSettings) => {
   settings = { ...settings, ...newSettings };
   saveSettings();
+  initComm({ window: mainWindow, discord: discordClient, userSettings: settings });
   return { success: true };
 });
 

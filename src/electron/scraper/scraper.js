@@ -4,7 +4,7 @@ import 'dotenv/config';
 import { delay, rejectCookies, cleanupExpiredMessages } from './utils.js';
 import { getItem, upsertItem } from './db.js';
 import { orderProduct } from './orderService.js';
-import { notify } from './communication.js';
+import { notify, discordClient } from './communication.js';
 
 // Enable stealth plugin
 puppeteer.use(StealthPlugin());
