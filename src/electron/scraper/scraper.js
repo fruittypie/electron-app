@@ -24,16 +24,17 @@ export const startScraping = async (scraperSettings) => {
     username, 
     password, 
     intervalSec, 
+    notifyDiscord
   } = scraperSettings;
 
   // Reset stop flag at the beginning
   stopFlag = false;
+  const intelvalMsec = intervalSec * 1000;
 
   // Notify start
   await notify({ text: '🚀 Starting the scraper...' });
 
   browser = await puppeteer.launch({ headless });
-  try {
     const page = await browser.newPage();
     // Browser setup
     await page.setUserAgent(
@@ -53,12 +54,13 @@ export const startScraping = async (scraperSettings) => {
     await page.click('button[type="submit"][data-testid="submit"]');
     await delay(scraperSettings.SHORT_DELAY || 5000);
 
-    // Check login success
+    // Check login success 
     const loginFailed = await page
       .$$eval('.Toastify__toast', toasts =>
         toasts.some(t => t.innerText.includes('Invalid email or password'))
       )
       .catch(() => false);
+
     if (loginFailed) {
       await notify({ text: '❌ Login failed: Invalid credentials' });
       await browser.close();
@@ -77,74 +79,108 @@ export const startScraping = async (scraperSettings) => {
         await page.waitForSelector('.free-store');
         await page.waitForSelector('.col-md-4.col-xs-6');
 
-        const cards = await page.$$eval('.col-md-4.col-xs-6', elems =>
-          elems.map(card => {
+        const products = await page.evaluate(() => {
+          return Array.from(document.querySelectorAll('.col-md-4.col-xs-6')).map(card => {
             const titleEl = card.querySelector('.Title-sc-99so87-5');
             const soldOutEl = card.querySelector('.OutOfStock-sc-99so87-0');
-            const buyBtn = card.querySelector('button.btn-order-campaign');
-            return {
-              title: titleEl?.innerText.trim(),
-              href: card.querySelector('a')?.href,
-              status: soldOutEl ? 'sold out' : buyBtn ? 'in stock' : 'unknown'
-            };
-          })
-        );
+            const orderedEl    = card.querySelector('skp-tag[text="ORDERED"], .skp-tag-root');
 
+            const title = titleEl ? titleEl.innerText.trim() : null;
+            const href = card.querySelector('a')?.href ?? null;
+
+            let status = "not found";
+
+            if (soldOutEl) {
+                status = "sold out";
+            } else if (orderedEl) {
+                status = "ordered";
+            } else {
+                status = "in stock";
+            }
+
+            return { title, status, href };
+          });
+        });
+          
+       const inStockProducts = products.filter(p => p.title && p.status === 'in stock');
+       console.log('inStockProducts ', inStockProducts);
         // Process products only if scraper is still running
         if (!stopFlag) {
-          for (const product of cards) {
-            if (stopFlag) break; // Exit the loop if stopping was requested
-            if (product.status === 'in stock' && !getItem(product.title)) {
+          for (const product of products) {
+            if (!product.title) continue;
+
+            const existing = getItem(product.title);
+            const currentStatus = product.status.trim().toLowerCase();
+
+            if (!existing) {
               upsertItem(product.title, product.status);
+              
               // Pass the browser instance to handle product processing
-              if (browser) {
-                try {
-                  await orderProduct(product, browser, scraperSettings);
-                } catch (err) {
-                  console.error(`Error processing product ${product.title}:`, err);
+              if (browser && product.status === 'in stock') {
+                  await orderProduct(product, browser, scraperSettings).catch(err =>
+                    console.error(`Error ordering ${product.title}:`, err)
+                  );
+                } else {
+                  console.log(`The new product ${product.title} was already sold out at the time of checking.`);
+                }
+              } else {
+                if (existing.status.trim().toLowerCase() !== currentStatus) {
+                  console.log(`Existing: "${existing.status}", New: "${product.status}"`);
+                  upsertItem(product.title, product.status);
+
+                  if (product.status === "in stock") {
+                    await orderProduct(product, browser, scraperSettings).catch(err =>
+                    console.error(`Error ordering ${product.title}:`, err)
+                    );
+                  } else {
+                    await notify(`Product updated: ${product.title} is now sold out.`);
+                  }
                 }
               }
             }
+
+            if (inStockProducts.length > 0) {
+                // short wait time, the product is in stock
+                await delay(2000);
+            } else {
+                // nothing in stock, slow down the polling
+                await delay(intelvalMsec);
+            } 
+
+          // Break the loop if stop was requested
+          if (stopFlag) break;
+
+          // Cleanup old messages if needed
+          if (notifyDiscord && discordClient) {
+            await cleanupExpiredMessages();
+          }
+          
+          // Only reload if we're still running
+          if (!stopFlag) {
+            await page.reload();
           }
         }
-
-        // Break the loop if stop was requested
-        if (stopFlag) break;
-
-        // Delay between polls
-        const waitTime = cards.some(p => p.status === 'in stock')
-          ? (scraperSettings.SHORT_DELAY || 2000)
-          : intervalSec * 1000;
-        await delay(waitTime);
-
-        // Cleanup old messages if needed
-        if (notifyDiscord && discordClient) {
-          await cleanupExpiredMessages();
+      } catch (error) {
+       if (error.name === 'TimeoutError') {
+        console.error('Timeout error occurred. Reloading the page...');
+        await page.reload();
+        } else {
+          console.error('An error occurred', error);
+          await notify({ text: 'The scraper has stopped due to technical problems' });
+          break;
         }
-        
-        // Only reload if we're still running
-        if (!stopFlag) {
-          await page.reload();
+      } finally {
+      // Clean browser close
+        if (browser) {
+          try {
+            await browser.close();
+          } catch (err) {
+            console.error('Error closing browser:', err);
+          }
+          browser = null; // Make sure it's null after closing
         }
-      } catch (err) {
-        await notify({ text: `⚠️ Scraping error: ${err.message}` });
-        break;
       }
-    }
-
-    // Notify stopped
-    await notify({ text: '🏁 The scraper has stopped' });
-  } catch (err) {
-    await notify({ text: `❌ Unexpected error: ${err.message}` });
-  } finally {
-    // Clean browser close
-    if (browser) {
-      try {
-        await browser.close();
-      } catch (err) {
-        console.error('Error closing browser:', err);
-      }
-      browser = null; // Make sure it's null after closing
     }
   }
-};
+  
+

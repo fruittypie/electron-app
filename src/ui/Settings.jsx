@@ -11,7 +11,9 @@ export default function Settings({ settings, onSave, onBack }) {
     notifyDiscord: settings?.notifyDiscord ?? false,
     autoOrder: settings?.autoOrder ?? false,
     minPrice: settings?.minPrice ?? 0,
-    keywords: settings?.keywords?.join(', ') ?? ',',
+    keywords: Array.isArray(settings?.keywords)
+      ? settings.keywords.join(', ')
+      : '',
   });
 
   const [errors, setErrors] = useState({});
