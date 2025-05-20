@@ -103,7 +103,6 @@ export const startScraping = async (scraperSettings) => {
         });
           
        const inStockProducts = products.filter(p => p.title && p.status === 'in stock');
-       console.log('inStockProducts ', inStockProducts);
         // Process products only if scraper is still running
         if (!stopFlag) {
           for (const product of products) {
@@ -114,7 +113,7 @@ export const startScraping = async (scraperSettings) => {
 
             if (!existing) {
               upsertItem(product.title, product.status);
-              
+
               // Pass the browser instance to handle product processing
               if (browser && product.status === 'in stock') {
                   await orderProduct(product, browser, scraperSettings).catch(err =>
@@ -169,17 +168,16 @@ export const startScraping = async (scraperSettings) => {
           await notify({ text: 'The scraper has stopped due to technical problems' });
           break;
         }
-      } finally {
-      // Clean browser close
-        if (browser) {
-          try {
-            await browser.close();
-          } catch (err) {
-            console.error('Error closing browser:', err);
-          }
-          browser = null; // Make sure it's null after closing
-        }
+      } 
+    }
+    // Clean browser close
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (err) {
+        console.error('Error closing browser:', err);
       }
+      browser = null; 
     }
   }
   
