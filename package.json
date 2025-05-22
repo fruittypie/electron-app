@@ -4,7 +4,22 @@
   "version": "0.0.0",
   "type": "module",
   "main": "src/electron/main.js",
-  "scripts": { 
+  "build": {
+  "appId": "com.freepie.freebie-catcher",
+  "productName": "Freebie Grabber",
+  "files": [
+    "dist-react/**/*",
+    "src/electron/main.js",
+    "src/electron/preload.cjs",
+    "src/electron/pathResolver.js",
+    "src/electron/util.js",
+    "src/electron/scraper/**/*",
+    "server/**/*",
+    ".env"
+  ]
+},
+  "scripts": {
+    "clean": "rimraf dist",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "postinstall": "electron-builder install-app-deps",
     "dev": "npm-run-all --parallel dev:react dev:electron",
@@ -48,6 +63,7 @@
     "globals": "^15.15.0",
     "npm-run-all": "^4.1.5",
     "os-utils": "^0.0.14",
+    "rimraf": "^6.0.1",
     "vite": "^6.2.0"
   }
 }

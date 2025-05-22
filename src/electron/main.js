@@ -20,6 +20,7 @@ const SETTINGS_PATH = path.join(app.getPath('userData'), 'scraper-settings.json'
 // In-memory state
 let isScraperRunning = false;
 let mainWindow;
+let discordClient = null;
 let scraperBrowser = null;
 let store = { users: {}, tokens: { accessToken: null, refreshToken: null } };
 let settings = {};
@@ -65,7 +66,7 @@ app.whenReady().then(async () => {
   }
 
   // Set up Discord client if needed
-  const discordClient = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
+  discordClient = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
   if (settings.notifyDiscord) {
     try {
       await discordClient.login(process.env.TOKEN);

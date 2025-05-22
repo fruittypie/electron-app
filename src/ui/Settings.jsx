@@ -32,7 +32,11 @@ export default function Settings({ settings, onSave, onBack }) {
       notifyDiscord: settings.notifyDiscord,
       autoOrder: settings.autoOrder,
       minPrice: settings.minPrice,
-      keywords: (settings.keywords || []).join(', '),
+      keywords: Array.isArray(settings.keywords)
+        ? settings.keywords.join(', ')
+        : typeof settings.keywords === 'string'
+        ? settings.keywords
+        : '',
     });
     setErrors({});
     setSaveError(null);
@@ -58,7 +62,13 @@ export default function Settings({ settings, onSave, onBack }) {
     if (!validate()) return;
     setIsSaving(true);
     try {
-      await onSave(form);
+      await onSave({
+        ...form,
+        keywords: form.keywords
+          .split(',')
+          .map(k => k.trim())
+          .filter(Boolean),
+      });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {

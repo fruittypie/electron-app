@@ -11,6 +11,7 @@ export function getPreloadPath() {
     return path.join(__dirname, 'preload.cjs');
   } else {
     // packaged as resources/app/dist/preload.cjs
-    return path.join(process.resourcesPath, 'dist', 'preload.cjs');
+    //return path.join(process.resourcesPath, 'dist', 'preload.cjs');
+    return path.join(__dirname, 'preload.cjs');
   }
 }

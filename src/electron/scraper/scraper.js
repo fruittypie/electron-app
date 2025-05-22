@@ -4,7 +4,7 @@ import 'dotenv/config';
 import { delay, rejectCookies, cleanupExpiredMessages } from './utils.js';
 import { getItem, upsertItem } from './db.js';
 import { orderProduct } from './orderService.js';
-import { notify, discordClient } from './communication.js';
+import { notify, discordClient, settings  } from './communication.js';
 
 // Enable stealth plugin
 puppeteer.use(StealthPlugin());
@@ -97,12 +97,12 @@ export const startScraping = async (scraperSettings) => {
             } else {
                 status = "in stock";
             }
-
-            return { title, status, href };
+            return { title, status, href }
           });
         });
           
        const inStockProducts = products.filter(p => p.title && p.status === 'in stock');
+
         // Process products only if scraper is still running
         if (!stopFlag) {
           for (const product of products) {
@@ -113,34 +113,41 @@ export const startScraping = async (scraperSettings) => {
 
             if (!existing) {
               upsertItem(product.title, product.status);
-
               // Pass the browser instance to handle product processing
               if (browser && product.status === 'in stock') {
+                console.log('the  newely product is out of stock, orderproduct() starts');
+                await orderProduct(product, browser, scraperSettings).catch(err =>
+                  console.error(`Error ordering ${product.title}:`, err)
+                );
+              } else {
+                console.log(`The new product ${product.title} was already sold out at the time of checking.`);
+              }
+            } else {
+              if (existing.status.trim().toLowerCase() !== currentStatus) {
+                console.log(`Existing: "${existing.status}", New: "${product.status}"`);
+                upsertItem(product.title, product.status);
+
+                if (product.status === "in stock") {
+                  console.log('The out of stock item is back in stock');
                   await orderProduct(product, browser, scraperSettings).catch(err =>
-                    console.error(`Error ordering ${product.title}:`, err)
+                  console.error(`Error ordering ${product.title}:`, err)
                   );
                 } else {
-                  console.log(`The new product ${product.title} was already sold out at the time of checking.`);
-                }
-              } else {
-                if (existing.status.trim().toLowerCase() !== currentStatus) {
-                  console.log(`Existing: "${existing.status}", New: "${product.status}"`);
-                  upsertItem(product.title, product.status);
-
-                  if (product.status === "in stock") {
-                    await orderProduct(product, browser, scraperSettings).catch(err =>
-                    console.error(`Error ordering ${product.title}:`, err)
-                    );
-                  } else {
-                    await notify(`Product updated: ${product.title} is now sold out.`);
-                  }
+                  await notify(`Product updated: ${product.title} is now sold out.`);
                 }
               }
+              // } else {
+              //   console.log('testing on out of stock items');
+              //   await orderProduct(product, browser, scraperSettings).catch(err =>
+              //     console.error(`Error ordering ${product.title}:`, err)
+              //   );
+              // }
+            }
             }
 
             if (inStockProducts.length > 0) {
                 // short wait time, the product is in stock
-                await delay(2000);
+                await delay(20000);
             } else {
                 // nothing in stock, slow down the polling
                 await delay(intelvalMsec);
@@ -151,7 +158,12 @@ export const startScraping = async (scraperSettings) => {
 
           // Cleanup old messages if needed
           if (notifyDiscord && discordClient) {
-            await cleanupExpiredMessages();
+            const ch = discordClient.channels.cache.get(settings.CHANNEL_ID);
+            if (ch) {
+              await cleanupExpiredMessages(ch);
+            } else {
+              console.error('Discord channel not found:', settings.CHANNEL_ID);
+            }
           }
           
           // Only reload if we're still running
