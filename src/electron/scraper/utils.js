@@ -48,3 +48,14 @@ export async function cleanupExpiredMessages(channel, minAgeMs = 10 * 60 * 1000,
   }
 }
 
+export function abortableDelay(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        clearTimeout(timer);
+        reject(new Error('Aborted'));
+      });
+    }
+  });
+}

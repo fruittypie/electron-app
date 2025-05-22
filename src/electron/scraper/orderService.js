@@ -1,4 +1,5 @@
 import { delay } from './utils.js';
+import { getStopFlag, getStopSignal } from './scraper.js';
 import { notify, promptOrder } from './communication.js';
 import pkg from 'discord.js';
 import 'dotenv/config';
@@ -8,6 +9,7 @@ const { SHORT_DELAY = 5000 } = process.env;
 
 // fetch product details (price & image), then either auto-order or notify the user
 export async function orderProduct(product, browser, settings) {
+  if (getStopFlag() || getStopSignal()?.aborted) return;
   // check to prevent errors when browser is null
   if (!browser) {
     console.error('Browser is not initialized for ordering');
@@ -16,11 +18,20 @@ export async function orderProduct(product, browser, settings) {
     });
     return;
   }
+
+  if (getStopFlag() || getStopSignal().aborted) return;
+
   const page = await browser.newPage();
+
   try {
     // Navigate to product page
     const url = new URL(product.href, 'https://creator.im.skeepers.io').href;
     await page.goto(url, { waitUntil: 'domcontentloaded' });
+
+    if (getStopFlag() || getStopSignal().aborted) {
+      return;
+    }
+    
     await delay(Number(SHORT_DELAY) || 2000);
 
     // Extract price
@@ -70,6 +81,7 @@ export async function orderProduct(product, browser, settings) {
         { title: product.title, href: product.href, price: price, imageUrl },
         embed
       );
+
       if (userConfirmed) {
         await notify({
           text: `Ordering **${product.title}**…`
@@ -100,6 +112,7 @@ export async function orderProduct(product, browser, settings) {
 }
 
 export async function finalizeOrder(page) {
+  if (getStopFlag() || getStopSignal().aborted) return;
   // Click the "Order" button to open the popup
   await page.waitForSelector('skp-button[text="Order"] button', { timeout: 10000 });
   await page.click('skp-button[text="Order"] button');

@@ -1,7 +1,7 @@
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import 'dotenv/config';
-import { delay, rejectCookies, cleanupExpiredMessages } from './utils.js';
+import { delay, rejectCookies, cleanupExpiredMessages, abortableDelay } from './utils.js';
 import { getItem, upsertItem } from './db.js';
 import { orderProduct } from './orderService.js';
 import { notify, discordClient, settings  } from './communication.js';
@@ -9,13 +9,24 @@ import { notify, discordClient, settings  } from './communication.js';
 // Enable stealth plugin
 puppeteer.use(StealthPlugin());
 
+export function getStopFlag() {
+  return stopFlag;
+}
+
+export function getStopSignal() {
+  return stopSignal;
+}
+
 let stopFlag = false;
+let controller = null;
+export let stopSignal = null; 
 let browser = null;
 
 export const stopScraping = () => {
-  stopFlag = true;
-  // Notify UI and Discord that stopping was requested
   notify({ text: '🛑 Stopping the scraper...' });
+  stopFlag = true;
+  // stop all async functions
+  if (controller) controller.abort();
 };
 
 export const startScraping = async (scraperSettings) => {
@@ -29,6 +40,8 @@ export const startScraping = async (scraperSettings) => {
 
   // Reset stop flag at the beginning
   stopFlag = false;
+  controller = new AbortController();
+  stopSignal = controller.signal;
   const intelvalMsec = intervalSec * 1000;
 
   // Notify start
@@ -45,14 +58,14 @@ export const startScraping = async (scraperSettings) => {
     // Navigate to login
     await notify({ text: '🔐 Navigating to login page...' });
     await page.goto('https://creator.im.skeepers.io/auth/signin/en');
-    await delay(scraperSettings.SHORT_DELAY || 5000);
+    await abortableDelay(scraperSettings.SHORT_DELAY || 5000, stopSignal);
     await page.waitForSelector('form#signin');
     await page.type('input#email', username);
     await page.type('input#password', password);
-    await delay(2000);
+    await abortableDelay(6000);
     await rejectCookies(page, '.needsclick', '#axeptio_btn_dismiss');
     await page.click('button[type="submit"][data-testid="submit"]');
-    await delay(scraperSettings.SHORT_DELAY || 5000);
+    await abortableDelay(scraperSettings.SHORT_DELAY || 5000, stopSignal);
 
     // Check login success 
     const loginFailed = await page
@@ -71,10 +84,10 @@ export const startScraping = async (scraperSettings) => {
 
     // Navigate to campaigns search
     await page.goto('https://creator.im.skeepers.io/campaigns/search');
-    await delay(scraperSettings.SHORT_DELAY || 5000);
+    await abortableDelay(scraperSettings.SHORT_DELAY || 5000, stopSignal);
 
     // Polling loop
-    while (!stopFlag) {
+    while (!stopFlag && !stopSignal.aborted) {
       try {
         await page.waitForSelector('.free-store');
         await page.waitForSelector('.col-md-4.col-xs-6');
@@ -102,6 +115,7 @@ export const startScraping = async (scraperSettings) => {
         });
           
        const inStockProducts = products.filter(p => p.title && p.status === 'in stock');
+       const orderTasks = [];
 
         // Process products only if scraper is still running
         if (!stopFlag) {
@@ -111,50 +125,39 @@ export const startScraping = async (scraperSettings) => {
             const existing = getItem(product.title);
             const currentStatus = product.status.trim().toLowerCase();
 
-            if (!existing) {
+            const shouldOrder = !existing || existing.status.trim().toLowerCase() !== currentStatus;
+
+            if (shouldOrder) {
               upsertItem(product.title, product.status);
               // Pass the browser instance to handle product processing
               if (browser && product.status === 'in stock') {
-                console.log('the  newely product is out of stock, orderproduct() starts');
-                await orderProduct(product, browser, scraperSettings).catch(err =>
-                  console.error(`Error ordering ${product.title}:`, err)
+                orderTasks.push(
+                  orderProduct(product, browser, scraperSettings).catch(err =>
+                    console.error(`Error ordering ${product.title}:`, err)
+                  )
                 );
               } else {
-                console.log(`The new product ${product.title} was already sold out at the time of checking.`);
+                console.log(`The new product ${product.title} is now sold out.`);
               }
-            } else {
-              if (existing.status.trim().toLowerCase() !== currentStatus) {
-                console.log(`Existing: "${existing.status}", New: "${product.status}"`);
-                upsertItem(product.title, product.status);
-
-                if (product.status === "in stock") {
-                  console.log('The out of stock item is back in stock');
-                  await orderProduct(product, browser, scraperSettings).catch(err =>
-                  console.error(`Error ordering ${product.title}:`, err)
-                  );
+            
                 } else {
-                  await notify(`Product updated: ${product.title} is now sold out.`);
-                }
-              }
-              // } else {
-              //   console.log('testing on out of stock items');
-              //   await orderProduct(product, browser, scraperSettings).catch(err =>
-              //     console.error(`Error ordering ${product.title}:`, err)
-              //   );
-              // }
+                  console.log('testing on out of stock items');
+                  orderTasks.push(
+                    orderProduct(product, browser, scraperSettings).catch(err =>
+                      console.error(`Error ordering ${product.title}:`, err)
+                    )
+                 );
             }
-            }
-
-            if (inStockProducts.length > 0) {
-                // short wait time, the product is in stock
-                await delay(20000);
-            } else {
-                // nothing in stock, slow down the polling
-                await delay(intelvalMsec);
-            } 
+          }
+          if (inStockProducts.length >= 0) {
+            await Promise.allSettled(orderTasks);
+            await delay(30000); // TODO: fix this
+          } else {
+            await delay(intelvalMsec);
+          }
 
           // Break the loop if stop was requested
-          if (stopFlag) break;
+          if (stopFlag || stopSignal.aborted) break;
 
           // Cleanup old messages if needed
           if (notifyDiscord && discordClient) {
@@ -167,7 +170,7 @@ export const startScraping = async (scraperSettings) => {
           }
           
           // Only reload if we're still running
-          if (!stopFlag) {
+          if (!stopFlag && !stopSignal.aborted) {
             await page.reload();
           }
         }
