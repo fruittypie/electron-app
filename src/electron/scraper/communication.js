@@ -56,7 +56,7 @@ export async function notify({ text, embed = null }) {
   }
 
 // prompt the user "Yes/No" with a timeout.
-export async function promptOrder(product, embed) {
+export async function promptOrder(product, embed, stopSignal) {
   const yesId = `order_yes_${product.title}`;
   const noId  = `order_no_${product.title}`;
   const content = `🛍️ **${product.title}** is in stock at $${product.price}. Order?`;
@@ -120,15 +120,29 @@ export async function promptOrder(product, embed) {
       ]
     });
 
-    inAppPromise = new Promise(resolve => {
-      // listen for a single click from the renderer
-      ipcMain.once('inapp-order-click', (_, customId) => {
-        resolve(customId === yesId);
-      });
-      // fallback after 60s
-      setTimeout(() => {
+    inAppPromise = new Promise((resolve) => {
+      const timeout = setTimeout(() => {
         resolve(false);
       }, 60000);
+
+      const clickHandler = (_, customId) => {
+        clearTimeout(timeout);
+        resolve(customId === yesId);
+      };
+
+      ipcMain.once('inapp-order-click', clickHandler);
+
+      if (stopSignal?.aborted) {
+        clearTimeout(timeout);
+        ipcMain.removeListener('inapp-order-click', clickHandler);
+        resolve(false);
+      } else {
+        stopSignal?.addEventListener('abort', () => {
+          clearTimeout(timeout);
+          ipcMain.removeListener('inapp-order-click', clickHandler);
+          resolve(false);
+        });
+      }
     });
   }
 

@@ -9,6 +9,8 @@ export default function App() {
   const [token, setToken] = useState(null);
   const [view, setView] = useState('menu'); // 'menu' | 'settings'
   const [settings, setSettings] = useState(null);
+  const [isScriptRunning, setIsScriptRunning] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
 
   // Load authentication token and scraper settings on mount
   useEffect(() => {
@@ -22,6 +24,19 @@ export default function App() {
     }).catch(err => {
       console.error('Failed to load settings:', err);
     });
+  }, []);
+
+   // Handle "scraper-finished" event
+  useEffect(() => {
+    const onFinished = () => {
+      setIsScriptRunning(false);
+      setIsStopping(false);
+    };
+
+    window.electron.on('scraper-finished', onFinished);
+    return () => {
+      window.electron.off('scraper-finished', onFinished);
+    };
   }, []);
 
   // If not logged in, show AuthPage
@@ -43,6 +58,8 @@ export default function App() {
     return (
       <Settings
         settings={settings}
+        isScriptRunning={isScriptRunning}
+        isStopping={isStopping}
         onSave={async newSettings => {
           const result = await window.electron.invoke('save-scraper-settings', newSettings);
           if (result.success) {
@@ -62,9 +79,17 @@ return (
       {/* Sidebar: 1/3 width, centered vertical buttons */}
       <aside className="w-1/3 bg-blue-200 dark:bg-blue-900 p-6 flex flex-col items-center justify-center space-y-6">
         <Menu
-          onStart={() => window.electron.invoke('start-puppeteer-scraper')}
-          onStop={()  => window.electron.invoke('stop-puppeteer-scraper')}
+          onStart={async () => {
+            setIsScriptRunning(true);
+            await window.electron.invoke('start-puppeteer-scraper');
+          }}
+          onStop={async () => {
+            setIsStopping(true);
+            await window.electron.invoke('stop-puppeteer-scraper');
+          }}
           onSettings={() => setView('settings')}
+          isScriptRunning={isScriptRunning}
+          isStopping={isStopping}
         />
       </aside>
 

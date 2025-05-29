@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-export default function Settings({ settings, onSave, onBack }) {
+export default function Settings({ settings, onSave, onBack, isScriptRunning, isStopping }) {
   // Local form state initialized from props
   const [form, setForm] = useState({
     headless: settings?.headless ?? true,
@@ -226,15 +226,20 @@ export default function Settings({ settings, onSave, onBack }) {
       <div className="text-center space-y-4">
         <button
           onClick={handleSave}
-          disabled={isSaving}
+          disabled={isSaving || isScriptRunning || isStopping}
           className={`px-6 py-3 rounded font-semibold text-white ${
-            isSaving
+            isSaving || isScriptRunning || isStopping
               ? 'bg-indigo-400 cursor-not-allowed'
               : 'bg-indigo-600 hover:bg-indigo-700'
           }`}
         >
           {isSaving ? 'Saving…' : 'Save'}
         </button>
+        {(isScriptRunning || isStopping) && (
+          <p className="text-red-500 text-sm mt-2">
+            Unable to change settings during a running script. Stop it first to be able to change settings.
+          </p>
+        )}
         {saveSuccess && (
           <div className="text-green-600">Settings saved!</div>
         )}

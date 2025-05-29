@@ -141,23 +141,19 @@ ipcMain.handle('save-scraper-settings', (_, newSettings) => {
 });
 
 // Scraper control handlers
-ipcMain.handle('start-puppeteer-scraper', (_, scraperSettings) => {
+ipcMain.handle('start-puppeteer-scraper', async (_, scraperSettings) => {
   Object.assign(settings, scraperSettings);
   saveSettings();
   isScraperRunning = true;
-
-  startScraping(settings)
-    .then(() => {
-      isScraperRunning = false;
-      scraperBrowser = null;
-      emitFinished();
-    })
-    .catch(err => {
-      console.error('Scraper error:', err);
-      isScraperRunning = false;
-      scraperBrowser = null;
-      emitFinished();
-    });
+  try {
+    await startScraping(settings); // ✅ теперь ждём полного завершения
+  } catch (err) {
+    console.error('Scraper error:', err);
+  } finally {
+    isScraperRunning = false;
+    scraperBrowser = null;
+    emitFinished(); // ✅ гарантированно после конца
+  }
   return { started: true };
 });
 

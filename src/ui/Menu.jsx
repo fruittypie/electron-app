@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
-export default function Menu({ onSettings }) {
+export default function Menu({  onStart, onStop, onSettings, isScriptRunning, isStopping }) {
   const [hasSettings,    setHasSettings]    = useState(false);
-  const [isScriptRunning, setIsScriptRunning] = useState(false);
-  const [isStopping,      setIsStopping]      = useState(false);
 
   // Load saved settings and subscribe to "scraper-finished"
   useEffect(() => {
@@ -16,48 +14,19 @@ export default function Menu({ onSettings }) {
         setHasSettings(false);
       }
     })();
-
-    const onFinished = () => {
-      // Reset both flags when scraper ends
-      setIsStopping(false);
-      setIsScriptRunning(false);
-    };
-
-    window.electron.on('scraper-finished', onFinished);
-    return () => {
-      window.electron.off('scraper-finished', onFinished);
-    };
   }, []);
 
   const handleButtonClick = async () => {
     if (isScriptRunning) {
       // stop flow
-      setIsStopping(true);
-      setIsScriptRunning(false);
-      try {
-        await window.electron.invoke('stop-puppeteer-scraper');
-        // renderer will reset flags when scraper-finished arrives
-      } catch (err) {
-        console.error('Error stopping scraper:', err);
-        // fallback reset on error
-        setIsStopping(false);
-      }
+      await onStop(); 
     } else {
       // start flow
       if (!hasSettings) {
         console.warn('Cannot start: settings missing');
         return;
       }
-      setIsStopping(false);
-      setIsScriptRunning(true);
-      try {
-        await window.electron.invoke('start-puppeteer-scraper');
-        // scraper-finished will fire later
-      } catch (err) {
-        console.error('Error starting scraper:', err);
-        // fallback reset on error
-        setIsScriptRunning(false);
-      }
+      await onStart();
     }
   };
 
@@ -82,6 +51,7 @@ export default function Menu({ onSettings }) {
       {buttonLabel}
     </button>
 
+    {/* Settings */}
     <button
       onClick={onSettings}
       className="w-32 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-full shadow transition"

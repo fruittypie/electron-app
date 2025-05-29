@@ -79,7 +79,8 @@ export async function orderProduct(product, browser, settings) {
     } else {
       const userConfirmed = await promptOrder(
         { title: product.title, href: product.href, price: price, imageUrl },
-        embed
+        embed,
+        getStopSignal()
       );
 
       if (userConfirmed) {

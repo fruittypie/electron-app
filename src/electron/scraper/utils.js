@@ -59,3 +59,13 @@ export function abortableDelay(ms, signal) {
     }
   });
 }
+
+export async function safeDelay(ms, signal) {
+  try {
+    await abortableDelay(ms, signal);
+    return true;
+  } catch (err) {
+    if (err.message === 'Aborted') return false;
+    throw err;
+  }
+}
