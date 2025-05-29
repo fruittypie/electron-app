@@ -11,6 +11,7 @@ export default function App() {
   const [settings, setSettings] = useState(null);
   const [isScriptRunning, setIsScriptRunning] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
+  const [logs, setLogs] = useState([]);
 
   // Load authentication token and scraper settings on mount
   useEffect(() => {
@@ -95,7 +96,18 @@ return (
 
       {/* Log panel: remaining 2/3 */}
       <main className="flex-1 bg-white dark:bg-gray-800 p-6 overflow-y-auto">
-        <LogPanel notifyInApp={settings.notifyInApp} />
+        <LogPanel
+          notifyInApp={settings.notifyInApp}
+          logs={logs}
+          onLog={(entry) => {
+            setLogs(prev => {
+              const isDuplicate = prev.some(
+                log => log.timestamp === entry.timestamp && log.text === entry.text
+              );
+              return isDuplicate ? prev : [...prev, entry];
+            });
+          }}
+        />
       </main>
     </div>
   );

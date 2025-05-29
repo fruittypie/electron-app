@@ -1,26 +1,19 @@
 import React, { useEffect, useState, useRef } from 'react';
 import LogEntry from './LogEntry';
 
-export default function LogPanel({ notifyInApp }) {
-    const [logs, setLogs] = useState([]);
+export default function LogPanel({ notifyInApp, logs, onLog }) {
     const bottomRef = useRef();
     
     useEffect(() => {
-        const onLog = (_, entry) => {
+        const onLogHandler  = (_, entry) => {
         if (entry.type === 'in-stock' && !notifyInApp) return;
-            setLogs(prevLogs => {
-                const isDuplicate = prevLogs.some(
-                    log => log.timestamp === entry.timestamp && log.text === entry.text
-                );
-            if(isDuplicate) {
-                return prevLogs;
-            }
-            return [...prevLogs,entry];
-            });
+             if (entry.type === 'in-stock' && !notifyInApp) return;
+            onLog(entry);
         };
-        window.electron.on('scraper-log', onLog);
-        return () => window.electron.off('scraper-log', onLog);
-    }, [notifyInApp]);
+
+        window.electron.on('scraper-log', onLogHandler);
+        return () => window.electron.off('scraper-log', onLogHandler);
+    }, [notifyInApp, onLog]);
 
   // auto-scroll
     useEffect(() => {
@@ -28,9 +21,11 @@ export default function LogPanel({ notifyInApp }) {
     }, [logs]);
 
     return (
-        <div className="flex-1 overflow-auto p-4 bg-gray-100 dark:bg-gray-800">
-            {logs.map((entry, i) => <LogEntry key={i} entry={entry} />)}
+        <div className="space-y-2 max-h-full overflow-y-auto">
+            {logs.map((entry, index) => (
+                <LogEntry key={index} entry={entry} />
+            ))}
             <div ref={bottomRef} />
         </div>
-  );
+    );
 }
