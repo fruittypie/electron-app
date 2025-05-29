@@ -146,6 +146,13 @@ export const startScraping = async (scraperSettings) => {
 
         if (!shouldStop()) {
           await page.reload();
+          const url = page.url();
+          2
+          if (url === 'https://creator.im.skeepers.io/') {
+            await notify({ text: '🔁 Jumped to homepage — redirecting back to campaigns...' });
+            await page.goto('https://creator.im.skeepers.io/campaigns/search');
+            if (!(await safeDelay(3000, stopSignal))) break;
+          } 
         }
 
       } catch (error) {
